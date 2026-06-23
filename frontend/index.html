@@ -199,25 +199,30 @@
         </section>
 
         <section id="signals" class="panel signals-panel">
-          <div class="section-heading">
+          <div class="section-heading signals-heading">
             <div>
               <p class="eyebrow">Decision log</p>
-              <h2>Signals and skipped trades</h2>
+              <h2>Signals</h2>
             </div>
-            <div class="history-toolbar">
-              <button type="button" class="button active" id="viewLiveBtn">Live</button>
-              <button type="button" class="button" id="viewHistoryBtn">History</button>
-              <span id="lastUpdated" class="muted">Updated now</span>
+            <div class="view-switch" role="tablist" aria-label="Signal view">
+              <button type="button" class="view-switch__btn active" id="viewLiveBtn" role="tab" aria-selected="true">Live</button>
+              <button type="button" class="view-switch__btn" id="viewHistoryBtn" role="tab" aria-selected="false">History</button>
             </div>
           </div>
-          <div class="history-controls" id="historyControls" style="display:none">
-            <label>
-              <span>Date</span>
-              <input type="date" id="historyDate" />
-            </label>
-            <button type="button" class="button" id="loadHistoryBtn">Load</button>
-            <span id="historyStatus" class="muted"></span>
+
+          <div class="signals-toolbar">
+            <p id="signalsSubtitle" class="signals-subtitle">Live session · updates every few seconds</p>
+            <div class="history-controls" id="historyControls" hidden>
+              <label class="history-date">
+                <span>Session date</span>
+                <input type="date" id="historyDate" />
+              </label>
+              <button type="button" class="button primary" id="loadHistoryBtn">Load</button>
+            </div>
           </div>
+
+          <div id="historyBanner" class="history-banner" hidden></div>
+
           <div class="table-wrap table-wrap--scroll">
             <table>
               <thead>

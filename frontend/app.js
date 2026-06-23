@@ -119,9 +119,42 @@ async function api(path, options = {}) {
     ...options
   });
   if (!response.ok) {
-    throw new Error(`API ${response.status}`);
+    let message = `API ${response.status}`;
+    try {
+      const body = await response.json();
+      const detail = body?.detail;
+      if (typeof detail === "string") {
+        message = detail;
+      } else if (detail?.message) {
+        message = detail.message;
+      }
+    } catch (_error) {
+      // keep default message
+    }
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
+}
+
+function setHistoryBanner(message, tone = "info") {
+  const banner = byId("historyBanner");
+  if (!banner) return;
+  if (!message) {
+    banner.hidden = true;
+    banner.textContent = "";
+    banner.className = "history-banner";
+    return;
+  }
+  banner.hidden = false;
+  banner.className = `history-banner history-banner--${tone}`;
+  banner.textContent = message;
+}
+
+function setSignalsSubtitle(text) {
+  const subtitle = byId("signalsSubtitle");
+  if (subtitle) subtitle.textContent = text;
 }
 
 function byId(id) {
@@ -163,6 +196,11 @@ function applySettings(settings) {
 
 function renderSignals(signals, { reverse = true, limit = 25 } = {}) {
   const visible = reverse ? signals.slice(-limit).reverse() : signals.slice(0, limit);
+  if (!visible.length) {
+    byId("signalsBody").innerHTML =
+      '<tr><td colspan="6" class="empty-cell">No signals for this view yet.</td></tr>';
+    return;
+  }
   byId("signalsBody").innerHTML = visible
     .map((row) => {
       const statusClass = row.status === "Taken" ? "good" : "warn";
@@ -170,10 +208,10 @@ function renderSignals(signals, { reverse = true, limit = 25 } = {}) {
         <tr>
           <td>${row.time}</td>
           <td>${row.signal}</td>
-          <td>${row.side || "-"}</td>
-          <td>${Number(row.ema_gap).toFixed(1)} pts</td>
+          <td>${row.side || "—"}</td>
+          <td>${Number(row.ema_gap).toFixed(1)}</td>
           <td><span class="pill ${statusClass}">${row.status}</span></td>
-          <td>${row.reason}</td>
+          <td class="reason-cell">${row.reason}</td>
         </tr>
       `;
     })
@@ -307,9 +345,9 @@ function renderDashboard(payload, { syncSettings = false } = {}) {
     settings.fill_slippage_rupees > 0
       ? `LTP + Rs ${settings.fill_slippage_rupees.toFixed(2)} slippage`
       : "LTP fill (no slippage)";
-  byId("lastUpdated").textContent = backendOnline
-    ? state.feed_message || "Synced now"
-    : "Demo fallback";
+  setSignalsSubtitle(
+    backendOnline ? state.feed_message || "Live session · synced" : "Demo fallback · backend offline"
+  );
 
   renderSignals(signals);
   renderTrades(trades);
@@ -329,6 +367,7 @@ async function refreshDashboard({ syncSettings = false } = {}) {
 
 async function loadHistory(dateValue) {
   const date = dateValue || byId("historyDate")?.value || todayIsoDate();
+  setHistoryBanner("");
   try {
     const [signals, trades] = await Promise.all([
       api(`/api/history/signals?date=${date}&limit=500`),
@@ -337,16 +376,26 @@ async function loadHistory(dateValue) {
     backendOnline = true;
     renderSignals(signals, { reverse: false, limit: 500 });
     renderTrades(trades);
-    if (byId("historyStatus")) {
-      byId("historyStatus").textContent = `History for ${date} · ${signals.length} signals · ${trades.length} trades`;
+    setSignalsSubtitle(`History · ${date}`);
+    if (!signals.length && !trades.length) {
+      setHistoryBanner(`No saved records for ${date}. Live signals still work — history needs the database connected on Render.`, "info");
+    } else {
+      setHistoryBanner(`${signals.length} signals · ${trades.length} trades loaded for ${date}.`, "success");
     }
-    if (byId("lastUpdated")) {
-      byId("lastUpdated").textContent = `History view · ${date}`;
-    }
-  } catch (_error) {
-    backendOnline = false;
-    if (byId("historyStatus")) {
-      byId("historyStatus").textContent = "Could not load history — check API URL / key";
+  } catch (error) {
+    backendOnline = error.status !== 503;
+    renderSignals([]);
+    renderTrades([]);
+    setSignalsSubtitle(`History · ${date}`);
+    if (error.status === 503) {
+      setHistoryBanner(
+        "History database is offline. Live mode still works — add DATABASE_PASSWORD on Render to enable saved history.",
+        "warn"
+      );
+    } else if (error.status === 401) {
+      setHistoryBanner("API key mismatch. Check TWIQ_API_KEY on Vercel matches API_KEY on Render.", "error");
+    } else {
+      setHistoryBanner(error.message || "Could not load history.", "error");
     }
   }
 }
@@ -356,9 +405,16 @@ function setViewMode(mode) {
   const liveBtn = byId("viewLiveBtn");
   const historyBtn = byId("viewHistoryBtn");
   const historyControls = byId("historyControls");
-  if (liveBtn) liveBtn.classList.toggle("active", !historyMode);
-  if (historyBtn) historyBtn.classList.toggle("active", historyMode);
-  if (historyControls) historyControls.style.display = historyMode ? "flex" : "none";
+  if (liveBtn) {
+    liveBtn.classList.toggle("active", !historyMode);
+    liveBtn.setAttribute("aria-selected", String(!historyMode));
+  }
+  if (historyBtn) {
+    historyBtn.classList.toggle("active", historyMode);
+    historyBtn.setAttribute("aria-selected", String(historyMode));
+  }
+  if (historyControls) historyControls.hidden = !historyMode;
+  setHistoryBanner("");
   if (historyMode) {
     loadHistory();
   } else {

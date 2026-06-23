@@ -120,6 +120,16 @@ def history_signals(
     session_date: session_date_type = Query(..., alias="date", description="Session date (YYYY-MM-DD)"),
     limit: int = Query(500, ge=1, le=5000),
 ) -> list[Signal]:
+    db_ok, db_error = database_status()
+    if not db_ok:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "database_unavailable",
+                "message": "History requires a working database connection",
+                "error": db_error,
+            },
+        )
     return list_signals(session_date, limit=limit)
 
 
@@ -128,6 +138,16 @@ def history_trades(
     session_date: session_date_type = Query(..., alias="date", description="Session date (YYYY-MM-DD)"),
     limit: int = Query(200, ge=1, le=5000),
 ) -> list[Trade]:
+    db_ok, db_error = database_status()
+    if not db_ok:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "database_unavailable",
+                "message": "History requires a working database connection",
+                "error": db_error,
+            },
+        )
     return list_trades(session_date, limit=limit)
 
 
@@ -136,4 +156,14 @@ def history_summary(
     from_date: session_date_type = Query(..., alias="from"),
     to_date: session_date_type = Query(..., alias="to"),
 ) -> dict:
+    db_ok, db_error = database_status()
+    if not db_ok:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "database_unavailable",
+                "message": "History requires a working database connection",
+                "error": db_error,
+            },
+        )
     return {"days": daily_summary(from_date, to_date)}

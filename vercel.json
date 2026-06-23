@@ -1,0 +1,4 @@
+{
+  "outputDirectory": "frontend",
+  "buildCommand": "bash scripts/vercel-build.sh"
+}

@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: twiq-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PAPER_TRADING_ONLY
+        value: true
+      - key: BROKER
+        value: dhan
+      - key: DATABASE_URL
+        sync: false
+      - key: DHAN_CLIENT_ID
+        sync: false
+      - key: DHAN_ACCESS_TOKEN
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: TICK_INTERVAL_SECONDS
+        value: "2.5"

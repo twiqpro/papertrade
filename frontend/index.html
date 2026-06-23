@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NIFTY Options Paper Trader</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">N</div>
+          <div>
+            <h1>NIFTY Options</h1>
+            <p>Paper trader</p>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Primary">
+          <a href="#overview" class="active">Overview</a>
+          <a href="#strategy">Strategy</a>
+          <a href="#trades">Trades</a>
+          <a href="#signals">Signals</a>
+          <a href="#questions">Decisions</a>
+        </nav>
+
+        <section class="panel compact">
+          <h2>Session</h2>
+          <div class="session-state">
+            <span class="status-dot"></span>
+            <span id="sessionLabel">Paper running</span>
+          </div>
+          <button id="toggleSession" class="button primary" type="button">Pause</button>
+        </section>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Forward test workspace</p>
+            <h2>ATM CE/PE scalping dashboard</h2>
+          </div>
+          <div class="clock">
+            <span id="marketClock">09:43:12 IST</span>
+            <strong id="tradeWindow">Trading window open</strong>
+            <small id="dataMode" class="muted">Demo mode</small>
+          </div>
+        </header>
+
+        <section id="overview" class="summary-grid">
+          <p id="haltBanner" class="halt-banner" style="display:none; grid-column: 1 / -1;"></p>
+          <article class="metric">
+            <span>Capital</span>
+            <strong id="capitalMetric">Rs 50,000</strong>
+            <small id="lotMetric">1 lot affordable</small>
+          </article>
+          <article class="metric">
+            <span>Paper P&amp;L</span>
+            <strong id="pnlMetric" class="positive">+Rs 1,150</strong>
+            <small>LTP fills (no slippage)</small>
+          </article>
+          <article class="metric">
+            <span>Win rate</span>
+            <strong id="winRateMetric">67%</strong>
+            <small>6 trades today</small>
+          </article>
+          <article class="metric">
+            <span>EMA gap</span>
+            <strong id="emaGapMetric">7.4 pts</strong>
+            <small id="emaStateMetric">Trade allowed</small>
+          </article>
+        </section>
+
+        <section class="workspace-grid">
+          <form id="strategy" class="panel settings-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Controls</p>
+                <h2>Strategy settings</h2>
+              </div>
+              <button class="button" id="saveSettings" type="submit">Save</button>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                <span>Capital budget</span>
+                <input id="capitalInput" type="number" min="0" step="1000" value="100000" />
+              </label>
+              <label>
+                <span>Risk per day</span>
+                <input id="dailyRiskInput" type="number" min="0" step="1000" value="100000" />
+              </label>
+              <label>
+                <span>Target</span>
+                <input id="targetInput" type="number" min="0.5" step="0.5" value="2" />
+              </label>
+              <label>
+                <span>Stop loss</span>
+                <input id="stopInput" type="number" min="0.5" step="0.5" value="5" />
+              </label>
+              <label>
+                <span>EMA minimum gap</span>
+                <input id="emaGapInput" type="number" min="0" step="0.5" value="3" />
+              </label>
+              <label>
+                <span>Max trades</span>
+                <input id="maxTradesInput" type="number" min="1" step="1" value="9999" />
+              </label>
+            </div>
+
+            <div class="segmented" aria-label="Candle timeframe">
+              <input id="tf1" type="radio" name="timeframe" value="1m" />
+              <label for="tf1">1m</label>
+              <input id="tf3" type="radio" name="timeframe" value="3m" />
+              <label for="tf3">3m</label>
+              <input id="tf5" type="radio" name="timeframe" value="5m" checked />
+              <label for="tf5">5m</label>
+            </div>
+          </form>
+
+          <section class="panel state-panel">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Current state</p>
+                <h2>Market and position</h2>
+              </div>
+              <span class="tag">ATM 23500</span>
+            </div>
+
+            <div class="state-list">
+              <div>
+                <span>NIFTY spot</span>
+                <strong id="spotValue">23,486.25</strong>
+              </div>
+              <div>
+                <span>EMA 9 / EMA 15</span>
+                <strong id="emaValue">23,481.8 / 23,474.4</strong>
+              </div>
+              <div>
+                <span>VWAP</span>
+                <strong id="vwapValue">—</strong>
+              </div>
+              <div>
+                <span>OI walls (call / put / pin)</span>
+                <strong id="oiValue">—</strong>
+              </div>
+              <div>
+                <span>Regime</span>
+                <strong id="regimeValue">—</strong>
+              </div>
+              <div>
+                <span>Preferred side</span>
+                <strong id="sideValue">ATM CE</strong>
+              </div>
+              <div>
+                <span>Open position</span>
+                <strong id="positionValue">23500 CE at Rs 112.40</strong>
+              </div>
+            </div>
+
+            <div class="price-ladder" aria-label="Option prices">
+              <div>
+                <span id="ceLabel">NIFTY — CE</span>
+                <strong id="cePrice">Rs 113.30</strong>
+              </div>
+              <div>
+                <span id="peLabel">NIFTY — PE</span>
+                <strong id="pePrice">Rs 96.75</strong>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="trades" class="panel execution-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Paper execution</p>
+              <h2>Trades</h2>
+            </div>
+            <span class="tag" id="fillModel">LTP fill (no slippage)</span>
+          </div>
+          <div class="table-wrap table-wrap--compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Entry</th>
+                  <th>Contract</th>
+                  <th>Qty</th>
+                  <th>Entry</th>
+                  <th>Exit</th>
+                  <th>Result</th>
+                  <th>P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody id="tradesBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="signals" class="panel signals-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Decision log</p>
+              <h2>Signals and skipped trades</h2>
+            </div>
+            <div class="history-toolbar">
+              <button type="button" class="button active" id="viewLiveBtn">Live</button>
+              <button type="button" class="button" id="viewHistoryBtn">History</button>
+              <span id="lastUpdated" class="muted">Updated now</span>
+            </div>
+          </div>
+          <div class="history-controls" id="historyControls" style="display:none">
+            <label>
+              <span>Date</span>
+              <input type="date" id="historyDate" />
+            </label>
+            <button type="button" class="button" id="loadHistoryBtn">Load</button>
+            <span id="historyStatus" class="muted"></span>
+          </div>
+          <div class="table-wrap table-wrap--scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Signal</th>
+                  <th>Side</th>
+                  <th>EMA gap</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="signalsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="questions" class="questions-band">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Open decisions</p>
+              <h2>Questions for your strategy</h2>
+            </div>
+          </div>
+          <div class="question-grid">
+            <article class="question-card">
+              <span>01</span>
+              <strong>Which candle timeframe should drive EMA?</strong>
+              <p>Start with 1 minute for scalping, then compare with 3 minute in backtests.</p>
+            </article>
+            <article class="question-card">
+              <span>02</span>
+              <strong>Should Rs 10 stop loss stay fixed?</strong>
+              <p>We will test whether the wider stop works with a Rs 2 target after slippage.</p>
+            </article>
+            <article class="question-card">
+              <span>03</span>
+              <strong>How many failed trades should stop the day?</strong>
+              <p>The default is 2 consecutive losses or 5 total trades.</p>
+            </article>
+            <article class="question-card">
+              <span>04</span>
+              <strong>Should ATM be based on spot or futures?</strong>
+              <p>Spot is simpler. Futures can be closer to how derivatives move.</p>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

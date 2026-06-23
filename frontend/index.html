@@ -7,24 +7,48 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">N</div>
-          <div>
-            <h1>NIFTY Options</h1>
-            <p>Paper trader</p>
+    <div class="app-shell" id="appShell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark">N</div>
+            <div class="brand-copy">
+              <h1>NIFTY Options</h1>
+              <p>Paper trader</p>
+            </div>
           </div>
+          <button
+            id="sidebarToggle"
+            class="sidebar-toggle"
+            type="button"
+            aria-label="Collapse sidebar"
+            aria-expanded="true"
+            title="Collapse sidebar"
+          >
+            ‹
+          </button>
         </div>
 
         <nav class="nav" aria-label="Primary">
-          <a href="#overview" class="active">Overview</a>
-          <a href="#strategy">Strategy</a>
-          <a href="#trades">Trades</a>
-          <a href="#signals">Signals</a>
+          <a href="#overview" class="active" title="Overview">
+            <span class="nav-short">O</span>
+            <span class="nav-label">Overview</span>
+          </a>
+          <a href="#strategy" title="Strategy">
+            <span class="nav-short">S</span>
+            <span class="nav-label">Strategy</span>
+          </a>
+          <a href="#trades" title="Trades">
+            <span class="nav-short">T</span>
+            <span class="nav-label">Trades</span>
+          </a>
+          <a href="#signals" title="Signals">
+            <span class="nav-short">Si</span>
+            <span class="nav-label">Signals</span>
+          </a>
         </nav>
 
-        <section class="panel compact">
+        <section class="panel compact session-panel">
           <h2>Session</h2>
           <div class="session-state">
             <span class="status-dot"></span>

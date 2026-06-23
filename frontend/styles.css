@@ -35,6 +35,11 @@ input {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   min-height: 100vh;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.app-shell.is-sidebar-collapsed {
+  grid-template-columns: 76px minmax(0, 1fr);
 }
 
 .sidebar {
@@ -47,12 +52,101 @@ input {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  overflow: hidden;
+  transition: padding 0.2s ease;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-toggle {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+}
+
+.sidebar-toggle:hover {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--panel-strong);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-short {
+  display: none;
+  width: 28px;
+  text-align: center;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.app-shell.is-sidebar-collapsed .sidebar {
+  padding: 20px 10px;
+  align-items: stretch;
+}
+
+.app-shell.is-sidebar-collapsed .brand-copy,
+.app-shell.is-sidebar-collapsed .nav-label,
+.app-shell.is-sidebar-collapsed .session-panel h2,
+.app-shell.is-sidebar-collapsed #sessionLabel {
+  display: none;
+}
+
+.app-shell.is-sidebar-collapsed .sidebar-header {
+  flex-direction: column;
+  align-items: center;
+}
+
+.app-shell.is-sidebar-collapsed .brand {
+  justify-content: center;
+}
+
+.app-shell.is-sidebar-collapsed .nav-short {
+  display: inline-block;
+}
+
+.app-shell.is-sidebar-collapsed .nav a {
+  justify-content: center;
+  padding: 11px 8px;
+}
+
+.app-shell.is-sidebar-collapsed .session-state {
+  justify-content: center;
+}
+
+.app-shell.is-sidebar-collapsed .session-panel .button {
+  padding-inline: 8px;
+  font-size: 12px;
 }
 
 .brand-mark {
@@ -567,7 +661,8 @@ tbody tr:hover {
 }
 
 @media (max-width: 1060px) {
-  .app-shell {
+  .app-shell,
+  .app-shell.is-sidebar-collapsed {
     grid-template-columns: 1fr;
   }
 
@@ -576,6 +671,27 @@ tbody tr:hover {
     height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    padding: 24px;
+    align-items: stretch;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .brand-copy,
+  .nav-label,
+  .session-panel h2,
+  #sessionLabel {
+    display: block;
+  }
+
+  .nav-short {
+    display: none !important;
+  }
+
+  .nav a {
+    justify-content: center;
   }
 
   .nav {

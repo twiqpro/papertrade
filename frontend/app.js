@@ -422,6 +422,27 @@ function setViewMode(mode) {
   }
 }
 
+function initSidebarCollapse() {
+  const shell = byId("appShell");
+  const toggle = byId("sidebarToggle");
+  if (!shell || !toggle) return;
+
+  const applyCollapsed = (collapsed) => {
+    shell.classList.toggle("is-sidebar-collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+    toggle.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+    toggle.textContent = collapsed ? "›" : "‹";
+  };
+
+  applyCollapsed(localStorage.getItem("twiq-sidebar-collapsed") === "1");
+  toggle.addEventListener("click", () => {
+    const collapsed = !shell.classList.contains("is-sidebar-collapsed");
+    applyCollapsed(collapsed);
+    localStorage.setItem("twiq-sidebar-collapsed", collapsed ? "1" : "0");
+  });
+}
+
 function wireEvents() {
   const strategyForm = byId("strategy");
   strategyForm.addEventListener("input", () => {
@@ -483,6 +504,7 @@ function wireEvents() {
 }
 
 wireEvents();
+initSidebarCollapse();
 refreshDashboard({ syncSettings: true });
 setInterval(() => {
   if (!historyMode) refreshDashboard();

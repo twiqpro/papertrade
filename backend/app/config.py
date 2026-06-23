@@ -15,6 +15,8 @@ class Settings:
         self.dhan_client_id = getenv("DHAN_CLIENT_ID", "")
         self.dhan_access_token = getenv("DHAN_ACCESS_TOKEN", "")
         self.database_url = getenv("DATABASE_URL", "sqlite:///./twiq.db")
+        # Optional: set password here instead of embedding it in DATABASE_URL (avoids @/# encoding issues)
+        self.database_password = getenv("DATABASE_PASSWORD", "")
         self.api_key = getenv("API_KEY", "")
         self.tick_interval_seconds = float(getenv("TICK_INTERVAL_SECONDS", "2.5"))
         self.cors_origins = [

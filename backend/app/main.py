@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .db import init_db
+from .db import database_status, init_db
 from .models import DashboardPayload, SessionMode, Signal, StrategySettings, Trade
 from .repository import daily_summary, list_signals, list_trades
 from .store import store
@@ -71,13 +71,15 @@ def health() -> dict:
     dhan_live = False
     if store._dhan_feed is not None and store._dhan_feed.last_good is not None:
         dhan_live = store._dhan_feed.last_good.feed_status == "live"
+    db_ok, db_error = database_status()
     return {
         "ok": True,
         "broker": settings.broker,
         "paper_trading_only": settings.paper_trading_only,
         "dhan_configured": dhan_configured,
         "dhan_live": dhan_live,
-        "database": bool(settings.database_url),
+        "database": db_ok,
+        "database_error": db_error,
     }
 
 

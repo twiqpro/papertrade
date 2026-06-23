@@ -49,13 +49,19 @@ async def lifespan(app: FastAPI):
 settings = get_settings()
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins + ["*"] if settings.environment == "development" else settings.cors_origins,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_cors_kwargs: dict = {
+    "allow_credentials": False,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if settings.environment == "development":
+    _cors_kwargs["allow_origins"] = settings.cors_origins + ["*"]
+else:
+    _cors_kwargs["allow_origins"] = settings.cors_origins
+    # Allow Vercel production + preview URLs without listing every deploy URL.
+    _cors_kwargs["allow_origin_regex"] = r"https://.*\.vercel\.app"
+
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 
 def verify_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")) -> None:

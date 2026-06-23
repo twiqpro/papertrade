@@ -269,6 +269,15 @@
     </div>
 
     <script src="./config.js"></script>
+    <script>
+      // Patch legacy Render hostname until Vercel env is updated.
+      if (window.TWIQ_API_BASE_URL?.includes("twiq-backend.onrender.com")) {
+        window.TWIQ_API_BASE_URL = window.TWIQ_API_BASE_URL.replace(
+          "twiq-backend.onrender.com",
+          "papertrade-absj.onrender.com"
+        );
+      }
+    </script>
     <script src="./app.js"></script>
   </body>
 </html>

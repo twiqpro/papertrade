@@ -22,7 +22,6 @@
           <a href="#strategy">Strategy</a>
           <a href="#trades">Trades</a>
           <a href="#signals">Signals</a>
-          <a href="#questions">Decisions</a>
         </nav>
 
         <section class="panel compact">
@@ -237,37 +236,6 @@
               </thead>
               <tbody id="signalsBody"></tbody>
             </table>
-          </div>
-        </section>
-
-        <section id="questions" class="questions-band">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Open decisions</p>
-              <h2>Questions for your strategy</h2>
-            </div>
-          </div>
-          <div class="question-grid">
-            <article class="question-card">
-              <span>01</span>
-              <strong>Which candle timeframe should drive EMA?</strong>
-              <p>Start with 1 minute for scalping, then compare with 3 minute in backtests.</p>
-            </article>
-            <article class="question-card">
-              <span>02</span>
-              <strong>Should Rs 10 stop loss stay fixed?</strong>
-              <p>We will test whether the wider stop works with a Rs 2 target after slippage.</p>
-            </article>
-            <article class="question-card">
-              <span>03</span>
-              <strong>How many failed trades should stop the day?</strong>
-              <p>The default is 2 consecutive losses or 5 total trades.</p>
-            </article>
-            <article class="question-card">
-              <span>04</span>
-              <strong>Should ATM be based on spot or futures?</strong>
-              <p>Spot is simpler. Futures can be closer to how derivatives move.</p>
-            </article>
           </div>
         </section>
       </main>

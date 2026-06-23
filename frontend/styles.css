@@ -86,8 +86,7 @@ input {
 .metric span,
 .metric small,
 .state-list span,
-.price-ladder span,
-.question-card p {
+.price-ladder span {
   color: var(--muted);
 }
 
@@ -150,10 +149,14 @@ main {
 }
 
 .summary-grid,
-.workspace-grid,
-.question-grid {
+.workspace-grid {
   display: grid;
   gap: 16px;
+}
+
+.summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
 }
 
 .halt-banner {
@@ -164,9 +167,6 @@ main {
   color: #c44;
   font-size: 0.9rem;
 }
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 16px;
-}
 
 .workspace-grid {
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
@@ -174,8 +174,7 @@ main {
 }
 
 .metric,
-.panel,
-.question-card {
+.panel {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -567,36 +566,6 @@ tbody tr:hover {
   color: var(--blue);
 }
 
-.questions-band {
-  margin-top: 16px;
-  padding: 18px 0 28px;
-}
-
-.question-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 16px;
-}
-
-.question-card {
-  padding: 18px;
-  min-height: 170px;
-}
-
-.question-card span {
-  color: var(--accent);
-  font-weight: 900;
-}
-
-.question-card strong {
-  display: block;
-  margin: 14px 0 8px;
-}
-
-.question-card p {
-  margin: 0;
-  line-height: 1.45;
-}
-
 @media (max-width: 1060px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -610,12 +579,11 @@ tbody tr:hover {
   }
 
   .nav {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .summary-grid,
-  .workspace-grid,
-  .question-grid {
+  .workspace-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -639,7 +607,6 @@ tbody tr:hover {
 
   .summary-grid,
   .workspace-grid,
-  .question-grid,
   .form-grid,
   .price-ladder,
   .nav {

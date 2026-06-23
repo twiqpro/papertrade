@@ -1,0 +1,14 @@
+.git
+.DS_Store
+**/.venv
+**/venv
+**/__pycache__
+**/*.py[cod]
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.sqlite
+frontend/
+node_modules/
+.vercel/

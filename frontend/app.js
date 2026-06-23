@@ -194,11 +194,13 @@ function applySettings(settings) {
   if (timeframe) timeframe.checked = true;
 }
 
-function renderSignals(signals, { reverse = true, limit = 25 } = {}) {
+function renderSignals(signals, { reverse = true, limit = 25, isHistory = false, date = null } = {}) {
   const visible = reverse ? signals.slice(-limit).reverse() : signals.slice(0, limit);
   if (!visible.length) {
-    byId("signalsBody").innerHTML =
-      '<tr><td colspan="6" class="empty-cell">No signals for this view yet.</td></tr>';
+    const message = isHistory
+      ? `No signals saved for ${date || "this date"}. Taken and skipped decisions are stored when the database is connected.`
+      : "No signals for this view yet.";
+    byId("signalsBody").innerHTML = `<tr><td colspan="6" class="empty-cell">${message}</td></tr>`;
     return;
   }
   byId("signalsBody").innerHTML = visible
@@ -312,14 +314,14 @@ function renderDashboard(payload, { syncSettings = false } = {}) {
   byId("emaStateMetric").textContent = state.trade_allowed ? "Trade allowed" : "No trade";
 
   byId("marketClock").textContent = state.market_clock;
-  byId("tradeWindow").textContent = "Trading window open (no time restriction)";
+  byId("tradeWindow").textContent = backendOnline ? "Market live" : "Offline";
   byId("dataMode").textContent = backendOnline
     ? `${state.broker.toUpperCase()} ${state.data_mode} · ${state.feed_status || "demo"}${state.option_expiry ? ` · expiry ${state.option_expiry}` : ""}`
     : "Backend offline, demo fallback";
   byId("sessionLabel").textContent = state.session_mode === "running" ? "Paper running" : "Paper paused";
   byId("toggleSession").textContent = state.session_mode === "running" ? "Pause" : "Resume";
   document.querySelector(".status-dot").style.background =
-    state.session_mode === "running" ? "var(--good)" : "var(--warn)";
+    state.session_mode === "running" ? "var(--accent)" : "var(--warn)";
 
   byId("spotValue").textContent = formatNumber.format(state.nifty_spot);
   byId("emaValue").textContent = `${formatNumber.format(state.ema_9)} / ${formatNumber.format(state.ema_15)}`;
@@ -374,7 +376,7 @@ async function refreshDashboard({ syncSettings = false } = {}) {
 }
 
 async function loadHistory(dateValue) {
-  const date = dateValue || byId("historyDate")?.value || todayIsoDate();
+  const date = dateValue || todayIsoDate();
   setHistoryBanner("");
   try {
     const [signals, trades] = await Promise.all([
@@ -382,9 +384,11 @@ async function loadHistory(dateValue) {
       api(`/api/history/trades?date=${date}&limit=200`)
     ]);
     backendOnline = true;
-    renderSignals(signals, { reverse: false, limit: 500 });
+    renderSignals(signals, { reverse: false, limit: 500, isHistory: true, date });
     renderTrades(trades, { isHistory: true, date });
-    setSignalsSubtitle(`Signal log · ${date}`);
+    setSignalsSubtitle(
+      `Signal history · ${date} · ${signals.length} decision${signals.length === 1 ? "" : "s"}`
+    );
     setTradesSubtitle(`Trade history · ${date} · ${trades.length} closed trade${trades.length === 1 ? "" : "s"}`);
     if (!signals.length && !trades.length) {
       setHistoryBanner(`No saved records for ${date}. Completed trades and signals appear here once the database is connected on Render.`, "info");
@@ -395,9 +399,9 @@ async function loadHistory(dateValue) {
     }
   } catch (error) {
     backendOnline = error.status !== 503;
-    renderSignals([]);
+    renderSignals([], { isHistory: true, date });
     renderTrades([], { isHistory: true, date });
-    setSignalsSubtitle(`Signal log · ${date}`);
+    setSignalsSubtitle(`Signal history · ${date}`);
     setTradesSubtitle(`Trade history · ${date}`);
     if (error.status === 503) {
       setHistoryBanner(
@@ -412,26 +416,72 @@ async function loadHistory(dateValue) {
   }
 }
 
+function syncViewControls() {
+  const pairs = [
+    ["viewLiveBtn", "viewHistoryBtn"],
+    ["signalsViewLiveBtn", "signalsViewHistoryBtn"]
+  ];
+  for (const [liveId, historyId] of pairs) {
+    const liveBtn = byId(liveId);
+    const historyBtn = byId(historyId);
+    if (liveBtn) {
+      liveBtn.classList.toggle("active", !historyMode);
+      liveBtn.setAttribute("aria-selected", String(!historyMode));
+    }
+    if (historyBtn) {
+      historyBtn.classList.toggle("active", historyMode);
+      historyBtn.setAttribute("aria-selected", String(historyMode));
+    }
+  }
+}
+
 function setViewMode(mode) {
   historyMode = mode === "history";
-  const liveBtn = byId("viewLiveBtn");
-  const historyBtn = byId("viewHistoryBtn");
-  const historyControls = byId("historyControls");
-  if (liveBtn) {
-    liveBtn.classList.toggle("active", !historyMode);
-    liveBtn.setAttribute("aria-selected", String(!historyMode));
-  }
-  if (historyBtn) {
-    historyBtn.classList.toggle("active", historyMode);
-    historyBtn.setAttribute("aria-selected", String(historyMode));
-  }
-  if (historyControls) historyControls.hidden = !historyMode;
+  syncViewControls();
   setHistoryBanner("");
   if (historyMode) {
     loadHistory();
   } else {
     refreshDashboard();
   }
+}
+
+function initNavScrollSpy() {
+  const links = Array.from(document.querySelectorAll(".nav a"));
+  const sections = links
+    .map((link) => {
+      const id = link.getAttribute("href")?.slice(1);
+      const section = id ? document.getElementById(id) : null;
+      return section ? { link, section } : null;
+    })
+    .filter(Boolean);
+
+  if (!sections.length) return;
+
+  const setActive = (id) => {
+    for (const { link, section } of sections) {
+      link.classList.toggle("active", section.id === id);
+    }
+  };
+
+  for (const { link } of sections) {
+    link.addEventListener("click", (event) => {
+      const id = link.getAttribute("href")?.slice(1);
+      if (id) setActive(id);
+    });
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+      if (visible[0]?.target?.id) setActive(visible[0].target.id);
+    },
+    { rootMargin: "-20% 0px -55% 0px", threshold: [0.1, 0.25, 0.5] }
+  );
+
+  for (const { section } of sections) observer.observe(section);
 }
 
 function initSidebarCollapse() {
@@ -506,17 +556,17 @@ function wireEvents() {
   if (byId("viewHistoryBtn")) {
     byId("viewHistoryBtn").addEventListener("click", () => setViewMode("history"));
   }
-  if (byId("historyDate")) {
-    byId("historyDate").value = todayIsoDate();
-    byId("historyDate").addEventListener("change", () => loadHistory());
+  if (byId("signalsViewLiveBtn")) {
+    byId("signalsViewLiveBtn").addEventListener("click", () => setViewMode("live"));
   }
-  if (byId("loadHistoryBtn")) {
-    byId("loadHistoryBtn").addEventListener("click", () => loadHistory());
+  if (byId("signalsViewHistoryBtn")) {
+    byId("signalsViewHistoryBtn").addEventListener("click", () => setViewMode("history"));
   }
 }
 
 wireEvents();
 initSidebarCollapse();
+initNavScrollSpy();
 refreshDashboard({ syncSettings: true });
 setInterval(() => {
   if (!historyMode) refreshDashboard();

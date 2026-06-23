@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NIFTY Options Paper Trader</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -14,7 +20,7 @@
             <div class="brand-mark">N</div>
             <div class="brand-copy">
               <h1>NIFTY Options</h1>
-              <p>Paper trader</p>
+              <p>Paper trading</p>
             </div>
           </div>
           <button
@@ -31,42 +37,75 @@
 
         <nav class="nav" aria-label="Primary">
           <a href="#overview" class="active" title="Overview">
-            <span class="nav-short">O</span>
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+              </svg>
+            </span>
             <span class="nav-label">Overview</span>
           </a>
           <a href="#strategy" title="Strategy">
-            <span class="nav-short">S</span>
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg>
+            </span>
             <span class="nav-label">Strategy</span>
           </a>
           <a href="#trades" title="Trades">
-            <span class="nav-short">T</span>
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                <polyline points="16 7 22 7 22 13"></polyline>
+              </svg>
+            </span>
             <span class="nav-label">Trades</span>
           </a>
           <a href="#signals" title="Signals">
-            <span class="nav-short">Si</span>
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            </span>
             <span class="nav-label">Signals</span>
           </a>
         </nav>
 
-        <section class="panel compact session-panel">
-          <h2>Session</h2>
+        <section class="session-panel">
           <div class="session-state">
             <span class="status-dot"></span>
             <span id="sessionLabel">Paper running</span>
           </div>
-          <button id="toggleSession" class="button primary" type="button">Pause</button>
+          <button id="toggleSession" class="button primary session-btn" type="button">Pause</button>
         </section>
       </aside>
 
+      <div class="workspace">
       <main>
         <header class="topbar">
           <div>
-            <p class="eyebrow">Forward test workspace</p>
-            <h2>ATM CE/PE scalping dashboard</h2>
+            <p class="eyebrow">Portfolio overview · paper trading</p>
+            <h2>NIFTY Options</h2>
           </div>
           <div class="clock">
             <span id="marketClock">09:43:12 IST</span>
-            <strong id="tradeWindow">Trading window open</strong>
+            <strong id="tradeWindow">Market live</strong>
             <small id="dataMode" class="muted">Demo mode</small>
           </div>
         </header>
@@ -96,7 +135,7 @@
         </section>
 
         <section class="workspace-grid">
-          <form id="strategy" class="panel settings-panel">
+          <form id="strategy" class="workspace-pane settings-panel">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Controls</p>
@@ -142,7 +181,7 @@
             </div>
           </form>
 
-          <section class="panel state-panel">
+          <section class="workspace-pane state-panel">
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Current state</p>
@@ -195,28 +234,23 @@
           </section>
         </section>
 
-        <section id="trades" class="panel execution-panel">
+        <section id="trades" class="content-section execution-panel">
           <div class="section-heading trades-heading">
             <div>
               <p class="eyebrow">Paper execution</p>
               <h2>Trades</h2>
             </div>
-            <div class="view-switch" role="tablist" aria-label="Trade view">
-              <button type="button" class="view-switch__btn active" id="viewLiveBtn" role="tab" aria-selected="true">Live</button>
-              <button type="button" class="view-switch__btn" id="viewHistoryBtn" role="tab" aria-selected="false">History</button>
+            <div class="trades-heading__actions">
+              <span class="tag" id="fillModel">LTP fill (no slippage)</span>
+              <div class="view-switch" role="tablist" aria-label="Session view">
+                <button type="button" class="view-switch__btn active" id="viewLiveBtn" role="tab" aria-selected="true">Live</button>
+                <button type="button" class="view-switch__btn" id="viewHistoryBtn" role="tab" aria-selected="false">History</button>
+              </div>
             </div>
           </div>
 
           <div class="trades-toolbar">
             <p id="tradesSubtitle" class="trades-subtitle">Today's paper trades · live</p>
-            <div class="history-controls" id="historyControls" hidden>
-              <label class="history-date">
-                <span>Session date</span>
-                <input type="date" id="historyDate" />
-              </label>
-              <button type="button" class="button primary" id="loadHistoryBtn">Load</button>
-            </div>
-            <span class="tag" id="fillModel">LTP fill (no slippage)</span>
           </div>
 
           <div id="historyBanner" class="history-banner" hidden></div>
@@ -239,11 +273,15 @@
           </div>
         </section>
 
-        <section id="signals" class="panel signals-panel">
-          <div class="section-heading">
+        <section id="signals" class="content-section signals-panel">
+          <div class="section-heading trades-heading">
             <div>
               <p class="eyebrow">Decision log</p>
               <h2>Signals</h2>
+            </div>
+            <div class="view-switch" role="tablist" aria-label="Signals view">
+              <button type="button" class="view-switch__btn active" id="signalsViewLiveBtn" role="tab" aria-selected="true">Live</button>
+              <button type="button" class="view-switch__btn" id="signalsViewHistoryBtn" role="tab" aria-selected="false">History</button>
             </div>
           </div>
 
@@ -266,6 +304,7 @@
           </div>
         </section>
       </main>
+      </div>
     </div>
 
     <script src="./config.js"></script>

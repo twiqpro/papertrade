@@ -241,10 +241,17 @@ function tradeResultClass(trade) {
   return trade.pnl >= 0 ? "good" : "warn";
 }
 
-function renderTrades(trades) {
+function setTradesSubtitle(text) {
+  const subtitle = byId("tradesSubtitle");
+  if (subtitle) subtitle.textContent = text;
+}
+
+function renderTrades(trades, { isHistory = false, date = null } = {}) {
   if (!trades.length) {
-    byId("tradesBody").innerHTML =
-      '<tr><td colspan="7" class="muted">No paper trades yet — closed trades and open positions appear here.</td></tr>';
+    const message = isHistory
+      ? `No closed trades saved for ${date || "this date"}. History stores completed trades only (Target, Stop, Trail, Time Exit).`
+      : "No paper trades yet — closed trades and open positions appear here.";
+    byId("tradesBody").innerHTML = `<tr><td colspan="7" class="empty-cell">${message}</td></tr>`;
     return;
   }
   byId("tradesBody").innerHTML = trades
@@ -348,9 +355,10 @@ function renderDashboard(payload, { syncSettings = false } = {}) {
   setSignalsSubtitle(
     backendOnline ? state.feed_message || "Live session · synced" : "Demo fallback · backend offline"
   );
+  setTradesSubtitle("Today's paper trades · live");
 
   renderSignals(signals);
-  renderTrades(trades);
+  renderTrades(trades, { isHistory: false });
 }
 
 async function refreshDashboard({ syncSettings = false } = {}) {
@@ -375,18 +383,22 @@ async function loadHistory(dateValue) {
     ]);
     backendOnline = true;
     renderSignals(signals, { reverse: false, limit: 500 });
-    renderTrades(trades);
-    setSignalsSubtitle(`History · ${date}`);
+    renderTrades(trades, { isHistory: true, date });
+    setSignalsSubtitle(`Signal log · ${date}`);
+    setTradesSubtitle(`Trade history · ${date} · ${trades.length} closed trade${trades.length === 1 ? "" : "s"}`);
     if (!signals.length && !trades.length) {
-      setHistoryBanner(`No saved records for ${date}. Live signals still work — history needs the database connected on Render.`, "info");
+      setHistoryBanner(`No saved records for ${date}. Completed trades and signals appear here once the database is connected on Render.`, "info");
+    } else if (!trades.length) {
+      setHistoryBanner(`${signals.length} signals for ${date}, but no closed trades yet. Trades are saved only after exit (Target/Stop/Trail).`, "info");
     } else {
-      setHistoryBanner(`${signals.length} signals · ${trades.length} trades loaded for ${date}.`, "success");
+      setHistoryBanner(`${trades.length} trades and ${signals.length} signals loaded for ${date}.`, "success");
     }
   } catch (error) {
     backendOnline = error.status !== 503;
     renderSignals([]);
-    renderTrades([]);
-    setSignalsSubtitle(`History · ${date}`);
+    renderTrades([], { isHistory: true, date });
+    setSignalsSubtitle(`Signal log · ${date}`);
+    setTradesSubtitle(`Trade history · ${date}`);
     if (error.status === 503) {
       setHistoryBanner(
         "History database is offline. Live mode still works — add DATABASE_PASSWORD on Render to enable saved history.",

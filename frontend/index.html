@@ -196,13 +196,31 @@
         </section>
 
         <section id="trades" class="panel execution-panel">
-          <div class="section-heading">
+          <div class="section-heading trades-heading">
             <div>
               <p class="eyebrow">Paper execution</p>
               <h2>Trades</h2>
             </div>
+            <div class="view-switch" role="tablist" aria-label="Trade view">
+              <button type="button" class="view-switch__btn active" id="viewLiveBtn" role="tab" aria-selected="true">Live</button>
+              <button type="button" class="view-switch__btn" id="viewHistoryBtn" role="tab" aria-selected="false">History</button>
+            </div>
+          </div>
+
+          <div class="trades-toolbar">
+            <p id="tradesSubtitle" class="trades-subtitle">Today's paper trades · live</p>
+            <div class="history-controls" id="historyControls" hidden>
+              <label class="history-date">
+                <span>Session date</span>
+                <input type="date" id="historyDate" />
+              </label>
+              <button type="button" class="button primary" id="loadHistoryBtn">Load</button>
+            </div>
             <span class="tag" id="fillModel">LTP fill (no slippage)</span>
           </div>
+
+          <div id="historyBanner" class="history-banner" hidden></div>
+
           <div class="table-wrap table-wrap--compact">
             <table>
               <thead>
@@ -222,29 +240,14 @@
         </section>
 
         <section id="signals" class="panel signals-panel">
-          <div class="section-heading signals-heading">
+          <div class="section-heading">
             <div>
               <p class="eyebrow">Decision log</p>
               <h2>Signals</h2>
             </div>
-            <div class="view-switch" role="tablist" aria-label="Signal view">
-              <button type="button" class="view-switch__btn active" id="viewLiveBtn" role="tab" aria-selected="true">Live</button>
-              <button type="button" class="view-switch__btn" id="viewHistoryBtn" role="tab" aria-selected="false">History</button>
-            </div>
           </div>
 
-          <div class="signals-toolbar">
-            <p id="signalsSubtitle" class="signals-subtitle">Live session · updates every few seconds</p>
-            <div class="history-controls" id="historyControls" hidden>
-              <label class="history-date">
-                <span>Session date</span>
-                <input type="date" id="historyDate" />
-              </label>
-              <button type="button" class="button primary" id="loadHistoryBtn">Load</button>
-            </div>
-          </div>
-
-          <div id="historyBanner" class="history-banner" hidden></div>
+          <p id="signalsSubtitle" class="signals-subtitle">Live session · updates every few seconds</p>
 
           <div class="table-wrap table-wrap--scroll">
             <table>

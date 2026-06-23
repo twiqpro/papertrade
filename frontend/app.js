@@ -1,4 +1,14 @@
-const API_BASE_URL = (window.TWIQ_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const LEGACY_RENDER_HOST = "twiq-backend.onrender.com";
+const RENDER_API_HOST = "papertrade-absj.onrender.com";
+
+function resolveApiBaseUrl(raw) {
+  const base = (raw || `https://${RENDER_API_HOST}`).replace(/\/$/, "");
+  return base.includes(LEGACY_RENDER_HOST)
+    ? base.replace(LEGACY_RENDER_HOST, RENDER_API_HOST)
+    : base;
+}
+
+const API_BASE_URL = resolveApiBaseUrl(window.TWIQ_API_BASE_URL);
 const API_KEY = window.TWIQ_API_KEY || "";
 
 const formatInr = new Intl.NumberFormat("en-IN", {

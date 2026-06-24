@@ -85,17 +85,12 @@ def _snap_exit_levels(
     )
     gamma = gamma_context(context.spot, context.gamma_flip)
     regime_label = f"{regime}/{gamma}"
-    use_trend_exits = settings.dynamic_exits_enabled and (regime == "TRENDING" or gamma == "NEG_GAMMA")
+    # use_trend_exits = settings.dynamic_exits_enabled and (regime == "TRENDING" or gamma == "NEG_GAMMA")
 
-    if use_trend_exits:
-        target_delta = settings.target_rupees * settings.target_trend_multiplier
-        stop_delta = settings.stop_loss_rupees * settings.stop_trend_multiplier
-        # trail_on = settings.trail_enabled  # Trail logic disabled
-        trail_on = False
-    else:
-        target_delta = settings.target_rupees
-        stop_delta = settings.stop_loss_rupees
-        trail_on = False
+    # Target and stop always use base values (no multiplier)
+    target_delta = settings.target_rupees
+    stop_delta = settings.stop_loss_rupees
+    trail_on = False
 
     target_price = entry_price + target_delta
     base_stop_price = entry_price - stop_delta

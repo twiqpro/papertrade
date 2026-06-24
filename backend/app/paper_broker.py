@@ -130,8 +130,9 @@ class PaperBroker:
             return False, "Open position — one at a time"
         if day.halted:
             return False, day.halt_reason or "Daily halt active"
-        if day.cooldown_until and now < day.cooldown_until:
-            return False, "Re-entry cooldown after stop-out"
+        # Re-entry cooldown check disabled
+        # if day.cooldown_until and now < day.cooldown_until:
+        #     return False, "Re-entry cooldown after stop-out"
         if not settings.use_full_capital:
             stop_risk = settings.stop_loss_rupees * LOT_SIZE
             if self.remaining_budget(settings) < stop_risk:
@@ -347,3 +348,4 @@ class PaperBroker:
             trail_stop_price=round(position.trail_stop_price, 2) if position.trail_stop_price is not None else None,
             trail_armed=position.trail_armed if position.trail_enabled else False,
         )
+

@@ -147,9 +147,10 @@ class PaperBroker:
             self.day.consecutive_losses += 1
         else:
             self.day.consecutive_losses = 0
-        if self.day.consecutive_losses >= settings.max_consecutive_losses:
-            self.day.halted = True
-            self.day.halt_reason = f"{settings.max_consecutive_losses} consecutive losses — halted"
+
+        # Removed the automatic halt on N consecutive losses. The consecutive_losses
+        # counter is retained for metrics, but it no longer stops the session.
+
         if not settings.use_full_capital and self.remaining_budget(settings) <= 0:
             self.day.halted = True
             self.day.halt_reason = "Daily risk budget exhausted"
@@ -347,3 +348,4 @@ class PaperBroker:
             trail_stop_price=round(position.trail_stop_price, 2) if position.trail_stop_price is not None else None,
             trail_armed=position.trail_armed if position.trail_enabled else False,
         )
+}],

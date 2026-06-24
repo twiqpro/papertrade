@@ -90,7 +90,8 @@ def _snap_exit_levels(
     if use_trend_exits:
         target_delta = settings.target_rupees * settings.target_trend_multiplier
         stop_delta = settings.stop_loss_rupees * settings.stop_trend_multiplier
-        trail_on = settings.trail_enabled
+        # trail_on = settings.trail_enabled  # Trail logic disabled
+        trail_on = False
     else:
         target_delta = settings.target_rupees
         stop_delta = settings.stop_loss_rupees
@@ -164,14 +165,16 @@ class PaperBroker:
         return entry_time + timedelta(minutes=timeframe_minutes(settings.timeframe) * candles)
 
     def _update_trailing(self, position: OpenPosition, ltp: float, settings: StrategySettings) -> None:
-        position.peak_ltp = max(position.peak_ltp, ltp)
-        if not position.trail_enabled or not settings.trail_enabled:
-            return
-        if position.peak_ltp - position.entry_price >= settings.trail_trigger_rupees:
-            position.trail_armed = True
-        if position.trail_armed:
-            trail = position.peak_ltp - settings.trail_distance_rupees
-            position.trail_stop_price = max(position.base_stop_price, trail)
+        # Trail logic disabled
+        # position.peak_ltp = max(position.peak_ltp, ltp)
+        # if not position.trail_enabled or not settings.trail_enabled:
+        #     return
+        # if position.peak_ltp - position.entry_price >= settings.trail_trigger_rupees:
+        #     position.trail_armed = True
+        # if position.trail_armed:
+        #     trail = position.peak_ltp - settings.trail_distance_rupees
+        #     position.trail_stop_price = max(position.base_stop_price, trail)
+        pass
 
     def try_enter(
         self,
@@ -225,7 +228,7 @@ class PaperBroker:
             peak_ltp=entry_price,
             trail_armed=False,
             trail_stop_price=None,
-            trail_enabled=trail_on,
+            trail_enabled=False,  # Trail disabled
         )
         self.open_position = position
         self._last_entry_signal_id = signal.id
@@ -266,7 +269,9 @@ class PaperBroker:
         self.open_position = None
         self._apply_trade_result(settings, pnl, result)
 
-        if result in ("Stop", "Trail"):
+        # Trail result check disabled
+        # if result in ("Stop", "Trail"):
+        if result in ("Stop",):
             if self.day is not None:
                 self.day.cooldown_until = self._cooldown_until(now, settings)
 
@@ -282,18 +287,20 @@ class PaperBroker:
         if ltp <= 0:
             return None
 
-        self._update_trailing(position, ltp, settings)
+        # self._update_trailing(position, ltp, settings)  # Trail logic disabled
+        pass
 
         if ltp >= position.target_price:
             return self._close_position(now, settings, context, "Target", ltp)
         if ltp <= position.base_stop_price:
             return self._close_position(now, settings, context, "Stop", ltp)
-        if (
-            position.trail_armed
-            and position.trail_stop_price is not None
-            and ltp <= position.trail_stop_price
-        ):
-            return self._close_position(now, settings, context, "Trail", ltp)
+        # Trail exit check disabled
+        # if (
+        #     position.trail_armed
+        #     and position.trail_stop_price is not None
+        #     and ltp <= position.trail_stop_price
+        # ):
+        #     return self._close_position(now, settings, context, "Trail", ltp)
         if now >= position.time_stop_at:
             return self._close_position(now, settings, context, "Time Exit", ltp)
 
@@ -303,15 +310,16 @@ class PaperBroker:
         if self.open_position is None:
             return None
         pos = self.open_position
-        trail_part = ""
-        if pos.trail_enabled:
-            if pos.trail_armed and pos.trail_stop_price is not None:
-                trail_part = f" · trail {pos.trail_stop_price:.2f} (armed)"
-            else:
-                trail_part = " · trail pending"
+        # Trail display disabled
+        # trail_part = ""
+        # if pos.trail_enabled:
+        #     if pos.trail_armed and pos.trail_stop_price is not None:
+        #         trail_part = f" · trail {pos.trail_stop_price:.2f} (armed)"
+        #     else:
+        #         trail_part = " · trail pending"
         return (
             f"{pos.contract} @ Rs {pos.entry_price:.2f} · TP {pos.target_price:.2f} · "
-            f"SL {pos.base_stop_price:.2f}{trail_part} · {pos.lots} lot · {pos.regime_at_entry}"
+            f"SL {pos.base_stop_price:.2f} · {pos.lots} lot · {pos.regime_at_entry}"
         )
 
     def open_position_trade(self, context: MarketContext, settings: StrategySettings) -> Optional[Trade]:
@@ -322,7 +330,8 @@ class PaperBroker:
         quote = quote_for_strike(context, position.strike, position.side)
         ltp = quote.ltp
         if ltp > 0:
-            self._update_trailing(position, ltp, settings)
+            # self._update_trailing(position, ltp, settings)  # Trail logic disabled
+            pass
 
         unrealized = 0.0
         mark_price: Optional[float] = None
@@ -345,7 +354,10 @@ class PaperBroker:
             pnl=round(unrealized, 2),
             target_price=round(position.target_price, 2),
             stop_price=round(position.base_stop_price, 2),
-            trail_stop_price=round(position.trail_stop_price, 2) if position.trail_stop_price is not None else None,
-            trail_armed=position.trail_armed if position.trail_enabled else False,
+            # Trail display fields disabled
+            # trail_stop_price=round(position.trail_stop_price, 2) if position.trail_stop_price is not None else None,
+            # trail_armed=position.trail_armed if position.trail_enabled else False,
+            trail_stop_price=None,
+            trail_armed=False,
         )
 

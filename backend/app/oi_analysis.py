@@ -21,8 +21,18 @@ class OiWallMap:
     total_put_oi: int
 
 
-def build_oi_wall_map(option_chain: dict, spot: float) -> OiWallMap:
-    strikes = option_chain.get("oc") or {}
+def filter_chain_atm_window(strikes: dict, spot: float, window: int = 10) -> dict:
+    atm = int(round(spot / 50) * 50)
+    low = atm - window * 50
+    high = atm + window * 50
+    return {key: row for key, row in strikes.items() if low <= float(key) <= high}
+
+
+def build_oi_wall_map(option_chain: dict, spot: float, window: int = 10) -> OiWallMap:
+    strikes = option_chain.get("oc") if isinstance(option_chain.get("oc"), dict) else option_chain
+    if not isinstance(strikes, dict):
+        strikes = {}
+    strikes = filter_chain_atm_window(strikes, spot, window)
     if not strikes:
         rounded = round(spot / 50) * 50
         return OiWallMap(call_wall=rounded, put_wall=rounded, pin_strike=rounded, pcr=1.0, total_call_oi=0, total_put_oi=0)

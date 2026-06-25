@@ -18,3 +18,4 @@ dist/
 build/
 *.sqlite
 *.db
+data/

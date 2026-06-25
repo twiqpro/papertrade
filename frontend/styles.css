@@ -1012,3 +1012,99 @@ tbody tr:last-child td {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+.code-block {
+  background: var(--surface-elevated, #111);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+  font-size: 12px;
+  max-height: 320px;
+}
+
+.code-block:empty {
+  display: none;
+}
+
+.status-output {
+  background: var(--surface-muted, #f4f6f8);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-muted, #5c6670);
+  line-height: 1.5;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.status-output:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted, #8a939c);
+}
+
+.help-text {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted, #5c6670);
+  line-height: 1.5;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted, #8a939c);
+  font-weight: normal;
+}
+
+.settings-group {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.settings-group h4 {
+  margin: 0 0 0.75rem;
+  font-size: 14px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.chart-grid canvas {
+  width: 100%;
+  background: var(--surface-elevated, #111);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mapping-wizard {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent, #6ea8fe);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}

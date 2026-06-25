@@ -11,6 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .db import database_status, init_db
+from .backtest.db import init_backtest_db
+from .backtest.jobs import mark_interrupted_jobs
+from .backtest.routes import router as backtest_router
 from .models import DashboardPayload, SessionMode, Signal, StrategySettings, Trade
 from .repository import daily_summary, list_signals, list_trades
 from .store import store
@@ -37,6 +40,8 @@ async def background_tick_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    init_backtest_db()
+    mark_interrupted_jobs()
     task = asyncio.create_task(background_tick_loop())
     yield
     task.cancel()
@@ -62,6 +67,7 @@ else:
     _cors_kwargs["allow_origin_regex"] = r"https://.*\.vercel\.app"
 
 app.add_middleware(CORSMiddleware, **_cors_kwargs)
+app.include_router(backtest_router)
 
 
 def verify_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")) -> None:

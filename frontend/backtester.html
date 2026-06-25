@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Twiq Backtester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        prefix: "tw-",
+        corePlugins: { preflight: false },
+        theme: {
+          extend: {
+            fontFamily: { sans: ["DM Sans", "system-ui", "sans-serif"] },
+          },
+        },
+      };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="brand">
+            <div class="brand-mark">B</div>
+            <div class="brand-copy">
+              <h1>Backtester</h1>
+              <p>Historical replay</p>
+            </div>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Backtester">
+          <a href="./index.html" title="Paper Trading">Paper Trading</a>
+          <a href="#data-manager" class="active">1. Load Data</a>
+          <a href="#strategy-lab">2. Run Strategy</a>
+          <a href="#results">3. Results</a>
+          <a href="#replay">4. Replay Log</a>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <section id="data-manager" class="workspace-pane">
+          <div id="data-wizard" class="tw-max-w-4xl tw-mx-auto tw-font-sans">
+            <!-- Stepper -->
+            <div class="tw-mb-8">
+              <div class="tw-flex tw-items-end tw-gap-3" id="wizardStepper">
+                <div class="tw-flex-1" data-wizard-step="1">
+                  <div class="wizard-bar tw-h-1 tw-rounded-full tw-bg-slate-900 tw-transition-all" id="bar-step-1"></div>
+                  <p class="tw-mt-2 tw-text-sm tw-font-medium tw-text-slate-900">Source</p>
+                </div>
+                <div class="tw-flex-1" data-wizard-step="2">
+                  <div class="wizard-bar tw-h-1 tw-rounded-full tw-bg-slate-200 tw-transition-all" id="bar-step-2"></div>
+                  <p class="tw-mt-2 tw-text-sm tw-font-medium tw-text-slate-400">Load data</p>
+                </div>
+                <div class="tw-flex-1" data-wizard-step="3">
+                  <div class="wizard-bar tw-h-1 tw-rounded-full tw-bg-slate-200 tw-transition-all" id="bar-step-3"></div>
+                  <p class="tw-mt-2 tw-text-sm tw-font-medium tw-text-slate-400">Optional</p>
+                </div>
+                <div class="tw-flex-1" data-wizard-step="4">
+                  <div class="wizard-bar tw-h-1 tw-rounded-full tw-bg-slate-200 tw-transition-all" id="bar-step-4"></div>
+                  <p class="tw-mt-2 tw-text-sm tw-font-medium tw-text-slate-400">Verify</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 1: Source -->
+            <div id="wizard-panel-1" class="wizard-panel">
+              <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">How do you want to load data?</h2>
+              <p class="tw-text-slate-500 tw-mb-6">Choose one path. You can always switch later.</p>
+              <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+                <button type="button" class="source-card tw-text-left tw-p-5 tw-rounded-xl tw-border-2 tw-border-slate-200 tw-bg-white hover:tw-border-slate-400 tw-transition-colors" data-source="dhan">
+                  <div class="tw-flex tw-items-center tw-gap-3 tw-mb-3">
+                    <span class="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-lg tw-bg-violet-100 tw-text-violet-700 tw-text-lg">⚡</span>
+                    <div>
+                      <p class="tw-font-semibold tw-text-slate-900">Dhan API</p>
+                      <p class="tw-text-xs tw-text-emerald-600 tw-font-medium">Recommended</p>
+                    </div>
+                  </div>
+                  <p class="tw-text-sm tw-text-slate-500">Auto-download NIFTY, options (ATM±10), and VIX. Needs credentials in backend/.env.</p>
+                  <p id="dhanCredentialStatus" class="tw-mt-3 tw-text-xs tw-text-slate-500">Checking credentials…</p>
+                </button>
+                <button type="button" class="source-card tw-text-left tw-p-5 tw-rounded-xl tw-border-2 tw-border-slate-200 tw-bg-white hover:tw-border-slate-400 tw-transition-colors" data-source="csv">
+                  <div class="tw-flex tw-items-center tw-gap-3 tw-mb-3">
+                    <span class="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-lg tw-bg-amber-100 tw-text-amber-700 tw-text-lg">📄</span>
+                    <div>
+                      <p class="tw-font-semibold tw-text-slate-900">Upload CSV</p>
+                      <p class="tw-text-xs tw-text-slate-500 tw-font-medium">Manual import</p>
+                    </div>
+                  </div>
+                  <p class="tw-text-sm tw-text-slate-500">Import files from MGrid, Google Drive exports, or your own spreadsheets.</p>
+                </button>
+                <button type="button" class="source-card tw-text-left tw-p-5 tw-rounded-xl tw-border-2 tw-border-slate-200 tw-bg-white hover:tw-border-slate-400 tw-transition-colors" data-source="yahoo">
+                  <div class="tw-flex tw-items-center tw-gap-3 tw-mb-3">
+                    <span class="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-lg tw-bg-sky-100 tw-text-sky-700 tw-text-lg">📈</span>
+                    <div>
+                      <p class="tw-font-semibold tw-text-slate-900">Yahoo Finance</p>
+                      <p class="tw-text-xs tw-text-slate-500 tw-font-medium">Quick spot + VIX</p>
+                    </div>
+                  </div>
+                  <p class="tw-text-sm tw-text-slate-500">Free 1-minute NIFTY and India VIX for today. No API key. Options still need CSV or Dhan.</p>
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 2: Load mandatory data -->
+            <div id="wizard-panel-2" class="wizard-panel tw-hidden">
+              <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">Load required data</h2>
+              <p class="tw-text-slate-500 tw-mb-6">NIFTY candles and option prices are mandatory for any backtest.</p>
+
+              <!-- Dhan path -->
+              <div id="load-dhan" class="tw-hidden tw-rounded-xl tw-border tw-border-slate-200 tw-bg-slate-50 tw-p-6">
+                <p class="tw-text-sm tw-text-slate-600 tw-mb-4">Downloads ~6 months of 1-minute NIFTY, ATM±10 options, and VIX to your local database.</p>
+                <div class="tw-flex tw-flex-wrap tw-gap-3">
+                  <button id="dhanSyncBtn" type="button" class="tw-inline-flex tw-items-center tw-px-5 tw-py-2.5 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-slate-800">Start download</button>
+                  <button id="cancelDhanJobBtn" type="button" class="tw-hidden tw-inline-flex tw-items-center tw-px-5 tw-py-2.5 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium hover:tw-bg-white">Cancel</button>
+                </div>
+                <div id="dhanStatus" class="status-output tw-mt-4" data-placeholder="Download progress appears here…"></div>
+                <div class="tw-mt-4 tw-rounded-xl tw-border tw-border-violet-200 tw-bg-violet-50 tw-p-4">
+                  <p class="tw-text-sm tw-text-slate-700 tw-mb-3">Download 1-minute ATM±10 CE+PE for the next weekly expiry on a specific day (without the full 6-month sync).</p>
+                  <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-3">
+                    <label class="tw-text-sm tw-text-slate-700">Trading date
+                      <input type="date" id="optionsDownloadDateDhan" class="tw-block tw-mt-1 tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm tw-bg-white" />
+                    </label>
+                    <button id="todayOptionsBtnDhan" type="button" class="tw-inline-flex tw-items-center tw-px-4 tw-py-2 tw-rounded-lg tw-bg-violet-700 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-violet-600">Download options for date</button>
+                  </div>
+                  <div id="todayOptionsStatusDhan" class="status-output tw-mt-3" data-placeholder=""></div>
+                  <div class="tw-mt-3 tw-rounded-lg tw-border tw-border-emerald-200 tw-bg-emerald-50 tw-p-3">
+                    <p id="dhanJsonDiskHintDhan" class="tw-text-xs tw-text-slate-600 tw-mb-2">Import saved JSON from backend/data/raw/dhan/ without re-downloading.</p>
+                    <button type="button" id="importDhanJsonDiskDhan" class="tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-emerald-700 tw-text-white tw-text-xs tw-font-medium hover:tw-bg-emerald-600">Import JSON for selected date</button>
+                    <div id="importResultDhanJson" class="status-output tw-mt-2" data-placeholder=""></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Yahoo path -->
+              <div id="load-yahoo" class="tw-hidden tw-rounded-xl tw-border tw-border-slate-200 tw-bg-slate-50 tw-p-6">
+                <p class="tw-text-sm tw-text-slate-600 tw-mb-2">Download 1-minute NIFTY + India VIX for a trading day. Recent days use Yahoo; older days fall back to Dhan automatically.</p>
+                <p id="storagePathsNote" class="tw-text-xs tw-text-slate-500 tw-mb-4">Stored in backend/data/twiq_backtest.duckdb (CSV backups in backend/data/raw/yahoo and raw/dhan).</p>
+                <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-3 tw-mb-4">
+                  <label class="tw-text-sm tw-text-slate-700">Trading date
+                    <input type="date" id="spotDownloadDate" class="tw-block tw-mt-1 tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm tw-bg-white" />
+                  </label>
+                  <button id="yahooSyncBtn" type="button" class="tw-inline-flex tw-items-center tw-px-5 tw-py-2.5 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-slate-800">Download NIFTY + VIX</button>
+                </div>
+                <div id="yahooStatus" class="status-output tw-mt-2" data-placeholder="Download progress appears here…"></div>
+                <div id="load-yahoo-options" class="tw-mt-4 tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white tw-p-5">
+                  <div class="tw-flex tw-items-start tw-justify-between tw-gap-3 tw-mb-3">
+                    <div>
+                      <span class="tw-inline-block tw-px-2 tw-py-0.5 tw-rounded tw-bg-red-100 tw-text-red-700 tw-text-xs tw-font-semibold tw-mb-1">Still required</span>
+                      <h3 class="tw-font-semibold tw-text-slate-900">Option prices (CE + PE)</h3>
+                      <p class="tw-text-sm tw-text-slate-500">1-minute ATM±10 for the <strong>next weekly expiry</strong> on the selected date (Dhan).</p>
+                    </div>
+                    <span id="status-options-yahoo" class="tw-text-xs tw-font-medium tw-text-slate-400">Not loaded</span>
+                  </div>
+                  <div class="tw-flex tw-flex-wrap tw-items-end tw-gap-3 tw-mb-3">
+                    <label class="tw-text-sm tw-text-slate-700">Trading date
+                      <input type="date" id="optionsDownloadDate" class="tw-block tw-mt-1 tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm tw-bg-white" />
+                    </label>
+                    <button id="todayOptionsBtn" type="button" class="tw-inline-flex tw-items-center tw-px-5 tw-py-2.5 tw-rounded-lg tw-bg-violet-700 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-violet-600">Download options (ATM±10)</button>
+                    <button id="cancelTodayOptionsBtn" type="button" class="tw-hidden tw-inline-flex tw-items-center tw-px-5 tw-py-2.5 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm hover:tw-bg-slate-50">Cancel</button>
+                  </div>
+                  <p id="todayOptionsCredentialHint" class="tw-mt-2 tw-text-xs tw-text-slate-500">Needs Dhan credentials in backend/.env</p>
+                  <div id="todayOptionsStatus" class="status-output tw-mt-3" data-placeholder="Option download progress appears here…"></div>
+
+                  <div class="tw-mt-4 tw-rounded-lg tw-border tw-border-emerald-200 tw-bg-emerald-50 tw-p-4">
+                    <p class="tw-text-sm tw-font-medium tw-text-slate-800 tw-mb-1">Already downloaded? Import Dhan JSON</p>
+                    <p id="dhanJsonDiskHintYahoo" class="tw-text-xs tw-text-slate-600 tw-mb-3">Dhan saves JSON backups in backend/data/raw/dhan/ — no need to re-download or convert to CSV.</p>
+                    <button type="button" id="importDhanJsonDiskYahoo" class="tw-px-4 tw-py-2 tw-rounded-lg tw-bg-emerald-700 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-emerald-600">Import JSON for selected date from disk</button>
+                  </div>
+
+                  <details class="tw-mt-4">
+                    <summary class="tw-text-sm tw-text-slate-600 tw-cursor-pointer">Or upload a JSON folder / CSV files</summary>
+                    <div class="tw-mt-3 tw-space-y-4">
+                      <div>
+                        <p class="tw-text-xs tw-font-medium tw-text-slate-700 tw-mb-1">Dhan JSON folder</p>
+                        <input type="file" id="jsonFolderOptionsYahoo" webkitdirectory directory multiple accept=".json,application/json" class="tw-block tw-w-full tw-text-sm tw-text-slate-600 tw-mb-1" />
+                        <p id="jsonFolderCountYahoo" class="tw-text-xs tw-text-slate-400 tw-mb-2">No folder selected</p>
+                        <button type="button" id="importJsonFolderBtnYahoo" class="tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium hover:tw-bg-slate-50">Import JSON folder</button>
+                      </div>
+                      <div>
+                        <p class="tw-text-xs tw-font-medium tw-text-slate-700 tw-mb-1">Option CSVs (legacy)</p>
+                        <input type="file" id="csvFileOptionsYahoo" accept=".csv" multiple class="tw-block tw-w-full tw-text-sm tw-text-slate-600 tw-mb-1" />
+                        <p id="optionsFileCountYahoo" class="tw-text-xs tw-text-slate-400 tw-mb-2">No files selected</p>
+                        <div class="tw-flex tw-flex-wrap tw-gap-2">
+                          <button type="button" id="previewCsvBtnYahoo" class="tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium hover:tw-bg-slate-50">Check first CSV</button>
+                          <button type="button" id="importCsvBtnYahoo" class="tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium hover:tw-bg-slate-50">Import CSVs</button>
+                        </div>
+                      </div>
+                      <div id="importResultYahoo" class="status-output" data-placeholder=""></div>
+                    </div>
+                  </details>
+                </div>
+              </div>
+
+              <!-- CSV path -->
+              <div id="load-csv" class="tw-hidden tw-space-y-4">
+                <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white tw-p-5">
+                  <div class="tw-flex tw-items-start tw-justify-between tw-gap-3 tw-mb-3">
+                    <div>
+                      <span class="tw-inline-block tw-px-2 tw-py-0.5 tw-rounded tw-bg-red-100 tw-text-red-700 tw-text-xs tw-font-semibold tw-mb-1">Required</span>
+                      <h3 class="tw-font-semibold tw-text-slate-900">NIFTY 1-minute candles</h3>
+                      <p class="tw-text-sm tw-text-slate-500">Columns: timestamp, open, high, low, close</p>
+                    </div>
+                    <span id="status-nifty" class="tw-text-xs tw-font-medium tw-text-slate-400">Not loaded</span>
+                  </div>
+                  <input type="file" id="csvFileNifty" accept=".csv" class="tw-block tw-w-full tw-text-sm tw-text-slate-600 tw-mb-3" />
+                  <button type="button" id="importNiftyBtn" class="tw-px-4 tw-py-2 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-slate-800">Import NIFTY</button>
+                  <div id="importResultNifty" class="status-output tw-mt-3" data-placeholder=""></div>
+                </div>
+
+                <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white tw-p-5">
+                  <div class="tw-flex tw-items-start tw-justify-between tw-gap-3 tw-mb-3">
+                    <div>
+                      <span class="tw-inline-block tw-px-2 tw-py-0.5 tw-rounded tw-bg-red-100 tw-text-red-700 tw-text-xs tw-font-semibold tw-mb-1">Required</span>
+                      <h3 class="tw-font-semibold tw-text-slate-900">Option prices (CE + PE)</h3>
+                      <p class="tw-text-sm tw-text-slate-500">Supports 3 formats — pick all files at once (Ctrl/Cmd+click or Shift):</p>
+                      <ul class="tw-text-xs tw-text-slate-500 tw-mt-1 tw-list-disc tw-pl-4 tw-space-y-0.5">
+                        <li><strong>One combined file</strong> — rows with strike + side columns</li>
+                        <li><strong>Wide format</strong> — ce_open / pe_close columns per strike</li>
+                        <li><strong>Many contract files</strong> — e.g. NIFTY_25550_CE_03_OCT_24.csv (name = strike + side + expiry)</li>
+                      </ul>
+                    </div>
+                    <span id="status-options" class="tw-text-xs tw-font-medium tw-text-slate-400">Not loaded</span>
+                  </div>
+                  <input type="file" id="csvFileOptions" accept=".csv" multiple class="tw-block tw-w-full tw-text-sm tw-text-slate-600 tw-mb-1" />
+                  <p id="optionsFileCount" class="tw-text-xs tw-text-slate-400 tw-mb-3">No CSV files selected</p>
+                  <div class="tw-mb-4 tw-rounded-lg tw-border tw-border-emerald-200 tw-bg-emerald-50 tw-p-3">
+                    <p class="tw-text-xs tw-font-medium tw-text-slate-700 tw-mb-1">Dhan JSON (preferred if you already downloaded)</p>
+                    <input type="file" id="jsonFolderOptions" webkitdirectory directory multiple accept=".json,application/json" class="tw-block tw-w-full tw-text-sm tw-text-slate-600 tw-mb-1" />
+                    <p id="jsonFolderCount" class="tw-text-xs tw-text-slate-400 tw-mb-2">No folder selected</p>
+                    <button type="button" id="importJsonFolderBtn" class="tw-px-4 tw-py-2 tw-rounded-lg tw-bg-emerald-700 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-emerald-600">Import JSON folder</button>
+                  </div>
+                  <div class="tw-flex tw-flex-wrap tw-gap-2">
+                    <button type="button" id="previewCsvBtn" class="tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium hover:tw-bg-slate-50">Check first file</button>
+                    <button type="button" id="importCsvBtn" class="tw-px-4 tw-py-2 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-slate-800">Import all selected</button>
+                  </div>
+                  <div id="mappingWizard" class="mapping-wizard tw-mt-3"></div>
+                  <div id="importResult" class="status-output tw-mt-3" data-placeholder=""></div>
+                </div>
+              </div>
+
+              <!-- hidden for JS compat -->
+              <select id="datasetType" class="tw-hidden">
+                <option value="nifty_candles">nifty_candles</option>
+                <option value="option_bars" selected>option_bars</option>
+                <option value="india_vix">india_vix</option>
+              </select>
+              <input type="file" id="csvFile" class="tw-hidden" />
+              <input type="text" id="profileName" class="tw-hidden" />
+            </div>
+
+            <!-- Step 3: Optional -->
+            <div id="wizard-panel-3" class="wizard-panel tw-hidden">
+              <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">Optional data</h2>
+              <p class="tw-text-slate-500 tw-mb-6">Skip this step if you run Core mode or disable the VIX filter.</p>
+              <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white tw-p-5">
+                <div class="tw-flex tw-items-start tw-justify-between tw-gap-3 tw-mb-3">
+                  <div>
+                    <span class="tw-inline-block tw-px-2 tw-py-0.5 tw-rounded tw-bg-slate-100 tw-text-slate-600 tw-text-xs tw-font-semibold tw-mb-1">Optional</span>
+                    <h3 class="tw-font-semibold tw-text-slate-900">India VIX</h3>
+                    <p class="tw-text-sm tw-text-slate-500">Needed only for the VIX volatility filter in Full Context mode.</p>
+                  </div>
+                  <span id="status-vix" class="tw-text-xs tw-font-medium tw-text-slate-400">Not loaded</span>
+                </div>
+                <div id="load-vix-dhan" class="tw-hidden tw-text-sm tw-text-slate-500 tw-mb-3">Included automatically if you used Dhan download.</div>
+                <div id="load-vix-yahoo" class="tw-hidden tw-text-sm tw-text-slate-500 tw-mb-3">Included when you download NIFTY + VIX from Yahoo Finance (step 2).</div>
+                <div id="load-vix-csv">
+                  <input type="file" id="csvFileVix" accept=".csv" class="tw-block tw-w-full tw-text-sm tw-text-slate-600 tw-mb-3" />
+                  <button type="button" id="importVixBtn" class="tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium hover:tw-bg-slate-50">Import VIX CSV</button>
+                  <div id="importResultVix" class="status-output tw-mt-3" data-placeholder=""></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 4: Verify -->
+            <div id="wizard-panel-4" class="wizard-panel tw-hidden">
+              <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">Verify your dataset</h2>
+              <p class="tw-text-slate-500 tw-mb-4">Use data already on disk, or go back and download more.</p>
+
+              <div id="existingDataBanner" class="tw-hidden tw-mb-4 tw-rounded-xl tw-border tw-border-emerald-200 tw-bg-emerald-50 tw-p-4">
+                <p class="tw-text-sm tw-font-medium tw-text-emerald-900" id="existingDataBannerTitle">Existing data found</p>
+                <p class="tw-text-xs tw-text-emerald-800 tw-mt-1" id="existingDataBannerDetail"></p>
+              </div>
+
+              <div class="tw-mb-6 tw-flex tw-flex-wrap tw-gap-3">
+                <label class="tw-inline-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-bg-white tw-cursor-pointer tw-text-sm">
+                  <input type="radio" name="dataChoice" value="existing" id="dataChoiceExisting" class="tw-accent-slate-900" checked />
+                  Use existing data
+                </label>
+                <label class="tw-inline-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-bg-white tw-cursor-pointer tw-text-sm">
+                  <input type="radio" name="dataChoice" value="download" id="dataChoiceDownload" class="tw-accent-slate-900" />
+                  Download new data
+                </label>
+              </div>
+
+              <div id="existingDataPanel" class="tw-mb-6">
+                <div class="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2 tw-mb-3">
+                  <p class="tw-text-sm tw-font-medium tw-text-slate-700">Select backtest-ready days</p>
+                  <div class="tw-flex tw-gap-2">
+                    <button type="button" id="selectAllReadyDays" class="tw-text-xs tw-px-2 tw-py-1 tw-rounded tw-border tw-border-slate-300 hover:tw-bg-slate-50">Select all</button>
+                    <button type="button" id="selectLatestReadyDay" class="tw-text-xs tw-px-2 tw-py-1 tw-rounded tw-border tw-border-slate-300 hover:tw-bg-slate-50">Latest only</button>
+                    <button type="button" id="clearReadyDays" class="tw-text-xs tw-px-2 tw-py-1 tw-rounded tw-border tw-border-slate-300 hover:tw-bg-slate-50">Clear</button>
+                  </div>
+                </div>
+                <div id="readyDaysList" class="tw-max-h-56 tw-overflow-y-auto tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white tw-p-3 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2"></div>
+                <p id="selectedDaysSummary" class="tw-mt-3 tw-text-sm tw-text-slate-600">No days selected.</p>
+              </div>
+
+              <div id="downloadNewPanel" class="tw-hidden tw-mb-6 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-p-4">
+                <p class="tw-text-sm tw-text-amber-900 tw-mb-3">Download fresh data for a trading day, then return here to verify.</p>
+                <button type="button" id="goToDownloadStep" class="tw-px-4 tw-py-2 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-slate-800">← Go to Load data (step 2)</button>
+              </div>
+
+              <p id="covRangeNote" class="tw-text-xs tw-text-slate-500 tw-mb-2">Backtest period (synced from your selection above):</p>
+              <p id="covOverlapNote" class="tw-text-sm tw-text-slate-600 tw-mb-4"></p>
+
+              <div class="tw-flex tw-flex-wrap tw-gap-3 tw-items-end tw-mb-4">
+                <label class="tw-text-sm">From <input type="date" id="covFrom" class="tw-ml-1 tw-px-2 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300" /></label>
+                <label class="tw-text-sm">To <input type="date" id="covTo" class="tw-ml-1 tw-px-2 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300" /></label>
+                <button type="button" id="coverageBtn" class="tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium hover:tw-bg-slate-50">Refresh check</button>
+              </div>
+
+              <ul id="dataChecklist" class="tw-space-y-3 tw-mb-6">
+                <li class="tw-flex tw-items-center tw-gap-3 tw-p-3 tw-rounded-lg tw-border tw-border-slate-200 tw-bg-white">
+                  <span id="check-nifty" class="tw-flex tw-h-6 tw-w-6 tw-items-center tw-justify-center tw-rounded-full tw-bg-slate-100 tw-text-slate-400 tw-text-xs">—</span>
+                  <div><p class="tw-font-medium tw-text-slate-900">NIFTY 1m candles</p><p class="tw-text-xs tw-text-slate-500">Required</p></div>
+                  <span id="check-nifty-count" class="tw-ml-auto tw-text-sm tw-text-slate-500">0 days</span>
+                </li>
+                <li class="tw-flex tw-items-center tw-gap-3 tw-p-3 tw-rounded-lg tw-border tw-border-slate-200 tw-bg-white">
+                  <span id="check-options" class="tw-flex tw-h-6 tw-w-6 tw-items-center tw-justify-center tw-rounded-full tw-bg-slate-100 tw-text-slate-400 tw-text-xs">—</span>
+                  <div><p class="tw-font-medium tw-text-slate-900">Option prices</p><p class="tw-text-xs tw-text-slate-500">Required</p></div>
+                  <span id="check-options-count" class="tw-ml-auto tw-text-sm tw-text-slate-500">0 days</span>
+                </li>
+                <li class="tw-flex tw-items-center tw-gap-3 tw-p-3 tw-rounded-lg tw-border tw-border-slate-200 tw-bg-white">
+                  <span id="check-vix" class="tw-flex tw-h-6 tw-w-6 tw-items-center tw-justify-center tw-rounded-full tw-bg-slate-100 tw-text-slate-400 tw-text-xs">—</span>
+                  <div><p class="tw-font-medium tw-text-slate-900">India VIX</p><p class="tw-text-xs tw-text-slate-500">Optional</p></div>
+                  <span id="check-vix-count" class="tw-ml-auto tw-text-sm tw-text-slate-500">0 days</span>
+                </li>
+              </ul>
+
+              <div id="coverageResult" class="status-output" data-placeholder="Click Refresh for a detailed breakdown."></div>
+            </div>
+
+            <!-- Wizard footer -->
+            <div class="tw-flex tw-items-center tw-justify-between tw-mt-8 tw-pt-6 tw-border-t tw-border-slate-200">
+              <button type="button" id="wizardBack" class="tw-inline-flex tw-items-center tw-gap-1 tw-text-sm tw-font-medium tw-text-slate-600 hover:tw-text-slate-900 tw-invisible">
+                ← Back
+              </button>
+              <p id="wizardHint" class="tw-text-xs tw-text-slate-400 tw-hidden md:tw-block">Stored locally in backend/data/</p>
+              <button type="button" id="wizardNext" class="tw-inline-flex tw-items-center tw-px-6 tw-py-2.5 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-slate-800 disabled:tw-opacity-40 disabled:tw-cursor-not-allowed">
+                Next →
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section id="strategy-lab" class="workspace-pane">
+          <div id="strategy-wizard" class="tw-max-w-4xl tw-mx-auto tw-font-sans">
+            <div class="tw-mb-8">
+              <div class="tw-flex tw-items-end tw-gap-3">
+                <div class="tw-flex-1" data-strategy-step="1">
+                  <div class="strategy-bar tw-h-1 tw-rounded-full tw-bg-slate-900" id="sbar-1"></div>
+                  <p class="tw-mt-2 tw-text-sm tw-font-medium tw-text-slate-900">Period</p>
+                </div>
+                <div class="tw-flex-1" data-strategy-step="2">
+                  <div class="strategy-bar tw-h-1 tw-rounded-full tw-bg-slate-200" id="sbar-2"></div>
+                  <p class="tw-mt-2 tw-text-sm tw-font-medium tw-text-slate-400">Rules</p>
+                </div>
+                <div class="tw-flex-1" data-strategy-step="3">
+                  <div class="strategy-bar tw-h-1 tw-rounded-full tw-bg-slate-200" id="sbar-3"></div>
+                  <p class="tw-mt-2 tw-text-sm tw-font-medium tw-text-slate-400">Launch</p>
+                </div>
+              </div>
+            </div>
+
+            <form id="backtestForm">
+              <!-- Step 1 -->
+              <div id="strategy-panel-1" class="strategy-panel">
+                <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">When &amp; what to test</h2>
+                <p class="tw-text-slate-500 tw-mb-6">Pick the date range and how much of the strategy to simulate.</p>
+                <div class="tw-flex tw-flex-wrap tw-gap-4 tw-mb-6">
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">From
+                    <input type="date" id="runFrom" required class="tw-mt-1 tw-block tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300" />
+                  </label>
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">To
+                    <input type="date" id="runTo" required class="tw-mt-1 tw-block tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300" />
+                  </label>
+                </div>
+                <p class="tw-text-sm tw-font-medium tw-text-slate-700 tw-mb-3">Strategy mode</p>
+                <div class="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4 tw-mb-6">
+                  <button type="button" class="mode-card tw-text-left tw-p-4 tw-rounded-xl tw-border-2 tw-border-slate-200 tw-bg-white" data-mode="core">
+                    <p class="tw-font-semibold tw-text-slate-900">Core</p>
+                    <p class="tw-text-sm tw-text-slate-500 tw-mt-1">EMA, VWAP, target &amp; stop only. Fewer data requirements.</p>
+                  </button>
+                  <button type="button" class="mode-card tw-text-left tw-p-4 tw-rounded-xl tw-border-2 tw-border-slate-900 tw-ring-2 tw-ring-slate-900 tw-bg-white" data-mode="full_context">
+                    <p class="tw-font-semibold tw-text-slate-900">Full Context</p>
+                    <p class="tw-text-sm tw-text-slate-500 tw-mt-1">+ OI walls, PCR, VIX &amp; spread filters when data exists.</p>
+                  </button>
+                </div>
+                <select id="replayMode" class="tw-hidden">
+                  <option value="core">core</option>
+                  <option value="full_context" selected>full_context</option>
+                </select>
+                <label class="tw-text-sm tw-font-medium tw-text-slate-700">Transaction costs
+                  <select id="costPreset" class="tw-mt-1 tw-block tw-w-full md:tw-w-64 tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-bg-white">
+                    <option value="ideal">Ideal — no slippage</option>
+                    <option value="base" selected>Base — ₹0.50 each side</option>
+                    <option value="stress">Stress — ₹1.00 each side</option>
+                  </select>
+                </label>
+              </div>
+
+              <!-- Step 2 -->
+              <div id="strategy-panel-2" class="strategy-panel tw-hidden">
+                <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">Trading rules</h2>
+                <p class="tw-text-slate-500 tw-mb-6">Key parameters only. Expand advanced if you need more control.</p>
+                <div class="tw-grid tw-grid-cols-2 md:tw-grid-cols-3 tw-gap-4 tw-mb-6">
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">Timeframe
+                    <select id="timeframe" class="tw-mt-1 tw-block tw-w-full tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-bg-white">
+                      <option value="5m" selected>5 min</option>
+                      <option value="3m">3 min</option>
+                      <option value="1m">1 min</option>
+                    </select>
+                  </label>
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">Target (₹)
+                    <input type="number" id="targetRupees" value="2" step="0.5" class="tw-mt-1 tw-block tw-w-full tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300" />
+                  </label>
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">Stop loss (₹)
+                    <input type="number" id="stopRupees" value="10" step="0.5" class="tw-mt-1 tw-block tw-w-full tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300" />
+                  </label>
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">EMA min gap
+                    <input type="number" id="emaGap" value="3" step="0.5" class="tw-mt-1 tw-block tw-w-full tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300" />
+                  </label>
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">Time stop (candles)
+                    <input type="number" id="timeStopCandles" value="2" min="1" class="tw-mt-1 tw-block tw-w-full tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300" />
+                  </label>
+                  <label class="tw-text-sm tw-font-medium tw-text-slate-700">Capital (₹)
+                    <input type="number" id="capitalBudget" value="100000" step="1000" class="tw-mt-1 tw-block tw-w-full tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300" />
+                  </label>
+                </div>
+
+                <details class="tw-rounded-xl tw-border tw-border-slate-200 tw-bg-slate-50 tw-p-4 tw-mb-4">
+                  <summary class="tw-cursor-pointer tw-text-sm tw-font-semibold tw-text-slate-700">Advanced settings</summary>
+                  <div class="tw-grid tw-grid-cols-2 md:tw-grid-cols-3 tw-gap-4 tw-mt-4">
+                    <label class="tw-text-xs tw-text-slate-600">Window start <input type="time" id="tradeStart" value="09:30" class="tw-mt-1 tw-block tw-w-full tw-px-2 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300" /></label>
+                    <label class="tw-text-xs tw-text-slate-600">Candle body ratio <input type="number" id="candleBodyRatio" value="0.5" min="0" max="1" step="0.05" class="tw-mt-1 tw-block tw-w-full tw-px-2 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300" /></label>
+                    <label class="tw-text-xs tw-text-slate-600">Max trades/day <input type="number" id="maxTradesPerDay" value="5" min="1" class="tw-mt-1 tw-block tw-w-full tw-px-2 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300" /></label>
+                    <label class="tw-text-xs tw-text-slate-600">Max consec. losses <input type="number" id="maxConsecutiveLosses" value="2" min="1" class="tw-mt-1 tw-block tw-w-full tw-px-2 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300" /></label>
+                  </div>
+                  <div id="fullContextFilters" class="tw-mt-4 tw-pt-4 tw-border-t tw-border-slate-200">
+                    <p class="tw-text-xs tw-font-semibold tw-text-slate-500 tw-mb-2">FULL CONTEXT FILTERS</p>
+                    <div class="tw-flex tw-flex-wrap tw-gap-4 tw-mb-3">
+                      <label class="tw-flex tw-items-center tw-gap-2 tw-text-sm"><input type="checkbox" id="pcrFilterEnabled" checked /> PCR</label>
+                      <label class="tw-flex tw-items-center tw-gap-2 tw-text-sm"><input type="checkbox" id="vixFilterEnabled" checked /> VIX</label>
+                      <label class="tw-flex tw-items-center tw-gap-2 tw-text-sm"><input type="checkbox" id="spreadFilterEnabled" checked /> Spread</label>
+                    </div>
+                    <div class="tw-grid tw-grid-cols-3 tw-gap-3">
+                      <label class="tw-text-xs">Max VIX <input type="number" id="maxIndiaVix" value="22" step="0.5" class="tw-mt-1 tw-block tw-w-full tw-px-2 tw-py-1.5 tw-rounded tw-border tw-border-slate-300" /></label>
+                      <label class="tw-text-xs">PCR CE &lt; <input type="number" id="pcrCeBlock" value="0.7" step="0.05" class="tw-mt-1 tw-block tw-w-full tw-px-2 tw-py-1.5 tw-rounded tw-border tw-border-slate-300" /></label>
+                      <label class="tw-text-xs">PCR PE &gt; <input type="number" id="pcrPeBlock" value="1.3" step="0.05" class="tw-mt-1 tw-block tw-w-full tw-px-2 tw-py-1.5 tw-rounded tw-border tw-border-slate-300" /></label>
+                    </div>
+                  </div>
+                  <div class="tw-mt-4 tw-flex tw-flex-wrap tw-gap-4">
+                    <label class="tw-flex tw-items-center tw-gap-2 tw-text-sm"><input type="checkbox" id="reversalEnabled" /> Reversal</label>
+                    <label class="tw-flex tw-items-center tw-gap-2 tw-text-sm"><input type="checkbox" id="trailEnabled" /> Trail stop</label>
+                    <label class="tw-flex tw-items-center tw-gap-2 tw-text-sm"><input type="checkbox" id="cooldownEnabled" /> Cooldown</label>
+                    <label class="tw-flex tw-items-center tw-gap-2 tw-text-sm"><input type="checkbox" id="dynamicExitsEnabled" /> Dynamic exits</label>
+                  </div>
+                </details>
+              </div>
+
+              <!-- Step 3 -->
+              <div id="strategy-panel-3" class="strategy-panel tw-hidden">
+                <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">Ready to run</h2>
+                <p class="tw-text-slate-500 tw-mb-6">Review your setup, then start the backtest.</p>
+                <div id="runSummary" class="tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white tw-p-5 tw-mb-6 tw-space-y-2 tw-text-sm"></div>
+                <div class="tw-flex tw-flex-wrap tw-gap-3">
+                  <button type="submit" class="tw-inline-flex tw-items-center tw-px-6 tw-py-2.5 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-semibold hover:tw-bg-slate-800">Run backtest</button>
+                  <button id="cancelBacktestJobBtn" type="button" class="tw-hidden tw-inline-flex tw-items-center tw-px-5 tw-py-2.5 tw-rounded-lg tw-border tw-border-slate-300 tw-text-slate-700 tw-text-sm tw-font-medium">Cancel</button>
+                </div>
+                <div id="runStatus" class="status-output tw-mt-4" data-placeholder="Progress appears here after you run."></div>
+              </div>
+
+              <div class="tw-flex tw-items-center tw-justify-between tw-mt-8 tw-pt-6 tw-border-t tw-border-slate-200">
+                <button type="button" id="strategyBack" class="tw-text-sm tw-font-medium tw-text-slate-600 hover:tw-text-slate-900 tw-invisible">← Back</button>
+                <button type="button" id="strategyNext" class="tw-inline-flex tw-items-center tw-px-6 tw-py-2.5 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium hover:tw-bg-slate-800">Next →</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="results" class="workspace-pane">
+          <div class="tw-max-w-5xl tw-mx-auto tw-font-sans">
+            <div class="tw-flex tw-items-center tw-justify-between tw-mb-6">
+              <div>
+                <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900">Results</h2>
+                <p class="tw-text-sm tw-text-slate-500">Click a run to see trades and charts.</p>
+              </div>
+              <button id="refreshRunsBtn" type="button" class="tw-px-4 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm tw-font-medium tw-text-slate-700 hover:tw-bg-slate-50">Refresh</button>
+            </div>
+
+            <div id="runsSummary" class="tw-grid tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-4 tw-mb-6"></div>
+
+            <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-overflow-hidden tw-mb-6">
+              <table class="tw-w-full tw-text-sm">
+                <thead class="tw-bg-slate-50 tw-text-left tw-text-slate-500">
+                  <tr>
+                    <th class="tw-px-4 tw-py-3 tw-font-medium">Run</th>
+                    <th class="tw-px-4 tw-py-3 tw-font-medium">Dates</th>
+                    <th class="tw-px-4 tw-py-3 tw-font-medium">Mode</th>
+                    <th class="tw-px-4 tw-py-3 tw-font-medium">Status</th>
+                    <th class="tw-px-4 tw-py-3 tw-font-medium tw-text-right">P&amp;L</th>
+                    <th class="tw-px-4 tw-py-3 tw-font-medium tw-text-right">Trades</th>
+                  </tr>
+                </thead>
+                <tbody id="runsTableBody" class="tw-divide-y tw-divide-slate-100"></tbody>
+              </table>
+            </div>
+
+            <div id="selectedRunPanel" class="tw-hidden">
+              <h3 class="tw-text-lg tw-font-semibold tw-text-slate-900 tw-mb-4">Selected run</h3>
+              <div class="chart-grid tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4 tw-mb-6">
+                <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-p-3 tw-bg-white">
+                  <p class="tw-text-xs tw-font-medium tw-text-slate-500 tw-mb-2">Equity curve</p>
+                  <canvas id="equityChart" width="640" height="200"></canvas>
+                </div>
+                <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-p-3 tw-bg-white">
+                  <p class="tw-text-xs tw-font-medium tw-text-slate-500 tw-mb-2">Drawdown</p>
+                  <canvas id="drawdownChart" width="640" height="200"></canvas>
+                </div>
+              </div>
+              <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-overflow-hidden tw-mb-6">
+                <table class="tw-w-full tw-text-sm">
+                  <thead class="tw-bg-slate-50 tw-text-slate-500">
+                    <tr>
+                      <th class="tw-px-4 tw-py-2 tw-font-medium">Side</th>
+                      <th class="tw-px-4 tw-py-2 tw-font-medium">Strike</th>
+                      <th class="tw-px-4 tw-py-2 tw-font-medium">Entry</th>
+                      <th class="tw-px-4 tw-py-2 tw-font-medium">Exit</th>
+                      <th class="tw-px-4 tw-py-2 tw-font-medium">Result</th>
+                      <th class="tw-px-4 tw-py-2 tw-font-medium tw-text-right">P&amp;L</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tradesTableBody" class="tw-divide-y tw-divide-slate-100"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <details class="tw-rounded-xl tw-border tw-border-slate-200 tw-bg-slate-50 tw-p-4">
+              <summary class="tw-cursor-pointer tw-text-sm tw-font-semibold tw-text-slate-700">Compare &amp; export</summary>
+              <div class="tw-mt-4 tw-space-y-4">
+                <div>
+                  <label class="tw-text-sm tw-text-slate-600">Compare run IDs (comma-separated)</label>
+                  <div class="tw-flex tw-gap-2 tw-mt-1">
+                    <input type="text" id="compareRunIds" placeholder="id1, id2" class="tw-flex-1 tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm" />
+                    <button id="compareBtn" type="button" class="tw-px-4 tw-py-2 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm">Compare</button>
+                  </div>
+                  <div id="compareResult" class="status-output tw-mt-2" data-placeholder=""></div>
+                </div>
+                <div class="tw-flex tw-flex-wrap tw-gap-2">
+                  <button id="exportJsonBtn" type="button" class="tw-px-3 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm">JSON</button>
+                  <button id="exportCsvBtn" type="button" class="tw-px-3 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm">CSV</button>
+                  <button id="exportHtmlBtn" type="button" class="tw-px-3 tw-py-1.5 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm">HTML</button>
+                </div>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section id="replay" class="workspace-pane">
+          <div class="tw-max-w-4xl tw-mx-auto tw-font-sans">
+            <h2 class="tw-text-2xl tw-font-semibold tw-text-slate-900 tw-mb-1">Decision log</h2>
+            <p class="tw-text-slate-500 tw-mb-4">Every signal — taken or skipped — with the reason.</p>
+            <div class="tw-flex tw-flex-wrap tw-gap-2 tw-items-center tw-mb-4">
+              <input type="text" id="replayRunId" placeholder="Run ID from Results" class="tw-flex-1 tw-min-w-[200px] tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-slate-300 tw-text-sm" />
+              <button id="loadReplayBtn" type="button" class="tw-px-4 tw-py-2 tw-rounded-lg tw-bg-slate-900 tw-text-white tw-text-sm tw-font-medium">Load</button>
+              <div class="tw-inline-flex tw-rounded-lg tw-border tw-border-slate-300 tw-overflow-hidden tw-text-sm">
+                <button type="button" id="replayViewTableBtn" class="tw-px-3 tw-py-2 tw-bg-slate-900 tw-text-white tw-font-medium">Table</button>
+                <button type="button" id="replayViewJsonBtn" class="tw-px-3 tw-py-2 tw-bg-white tw-text-slate-700 tw-font-medium hover:tw-bg-slate-50">JSON</button>
+              </div>
+            </div>
+            <p id="replaySummary" class="tw-text-sm tw-text-slate-500 tw-mb-3"></p>
+            <div id="replayTableWrap" class="tw-hidden tw-overflow-x-auto tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white">
+              <table class="tw-w-full tw-text-sm tw-text-left">
+                <thead class="tw-bg-slate-50 tw-text-xs tw-uppercase tw-text-slate-500">
+                  <tr>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium">Time</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium">Status</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium">Side</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium">Strike</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium">Layer</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium tw-text-right">Spot</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium tw-text-right">EMA gap</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium tw-text-right">Lots</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium tw-text-right">Entry</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium tw-text-right">Exit</th>
+                    <th class="tw-px-3 tw-py-2 tw-font-medium">Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="replayTableBody" class="tw-divide-y tw-divide-slate-100"></tbody>
+              </table>
+            </div>
+            <div id="replayLog" class="status-output tw-hidden" data-placeholder="Load a run to see the decision log."></div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="./config.js"></script>
+    <script src="./shared.js"></script>
+    <script src="./vendor/equity-chart.js"></script>
+    <script src="./backtester.js"></script>
+  </body>
+</html>

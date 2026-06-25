@@ -13,6 +13,8 @@ from .config import get_settings
 BASE_URL = "https://api.dhan.co/v2"
 NIFTY_SECURITY_ID = 13
 NIFTY_SEGMENT = "IDX_I"
+INDIA_VIX_SECURITY_ID = 26
+NSE_FNO = "NSE_FNO"
 
 
 class DhanApiError(Exception):
@@ -105,3 +107,45 @@ class DhanAdapter:
         )
         data = response.get("data", response)
         return data if isinstance(data, dict) else {}
+
+    def get_rolling_expired_options(
+        self,
+        from_date: str,
+        to_date: str,
+        strike: str = "ATM",
+        drv_option_type: str = "CALL",
+        interval: str = "1",
+        expiry_code: int = 1,
+        expiry_flag: str = "WEEK",
+        security_id: str = str(NIFTY_SECURITY_ID),
+        exchange_segment: str = NSE_FNO,
+        instrument: str = "OPTIDX",
+    ) -> dict[str, Any]:
+        response = self._request(
+            "POST",
+            "/charts/rollingoption",
+            {
+                "exchangeSegment": exchange_segment,
+                "interval": interval,
+                "securityId": security_id,
+                "instrument": instrument,
+                "expiryFlag": expiry_flag,
+                "expiryCode": expiry_code,
+                "strike": strike,
+                "drvOptionType": drv_option_type,
+                "requiredData": ["open", "high", "low", "close", "iv", "volume", "strike", "oi", "spot"],
+                "fromDate": from_date,
+                "toDate": to_date,
+            },
+        )
+        return response.get("data", response) if isinstance(response, dict) else {}
+
+    def get_vix_intraday(self, from_date: str, to_date: str, interval: str = "1") -> dict[str, list[Any]]:
+        return self.get_intraday_candles(
+            from_date=from_date,
+            to_date=to_date,
+            interval=interval,
+            security_id=str(INDIA_VIX_SECURITY_ID),
+            exchange_segment="IDX_I",
+            instrument="INDEX",
+        )

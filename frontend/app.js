@@ -26,7 +26,7 @@ const fallbackPayload = {
     capital_budget: 100000,
     daily_risk: 100000,
     target_rupees: 2,
-    stop_loss_rupees: 5,
+    stop_loss_rupees: 10,
     ema_gap_min_points: 3,
     max_trades_per_day: 9999,
     max_consecutive_losses: 2,
@@ -176,7 +176,6 @@ function readSettingsFromForm() {
     max_consecutive_losses: latestPayload.settings.max_consecutive_losses || 2,
     timeframe: document.querySelector('input[name="timeframe"]:checked')?.value || "1m",
     trade_start: latestPayload.settings.trade_start || "09:30",
-    trade_end: latestPayload.settings.trade_end || "11:30",
     fill_slippage_rupees: latestPayload.settings.fill_slippage_rupees ?? 0,
     atm_source: latestPayload.settings.atm_source || "spot",
     expiry_rule: latestPayload.settings.expiry_rule || "current_weekly"

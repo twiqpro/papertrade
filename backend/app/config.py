@@ -19,6 +19,8 @@ class Settings:
         self.database_password = getenv("DATABASE_PASSWORD", "")
         self.api_key = getenv("API_KEY", "")
         self.tick_interval_seconds = float(getenv("TICK_INTERVAL_SECONDS", "2.5"))
+        self.data_dir = getenv("DATA_DIR", "data")
+        self.duckdb_path = getenv("DUCKDB_PATH", "data/twiq_backtest.duckdb")
         self.cors_origins = [
             origin.strip()
             for origin in getenv(

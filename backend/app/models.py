@@ -36,8 +36,8 @@ class StrategySettings(BaseModel):
     macd_fast: int = Field(12, ge=2)
     macd_slow: int = Field(26, ge=3)
     macd_signal_period: int = Field(9, ge=2)
-    warmup_bars: int = Field(20, ge=2)
     atr_period: int = Field(14, ge=2)
+    warmup_bars: int = Field(20, ge=2)
     big_bar_atr_mult: float = Field(0.6, ge=0)
     require_macd: bool = False
     sl_pct: float = Field(0.30, gt=0, le=1)

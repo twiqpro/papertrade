@@ -70,6 +70,7 @@ class MarketContext:
     ema_20: float = 0.0
     macd: float = 0.0
     macd_signal: float = 0.0
+    history_seeded: bool = False
 
 
 def calc_ema_series(closes: list[float], period: int) -> list[float]:
@@ -239,14 +240,15 @@ def evaluate_entry_signal(
         )
 
     candle_count = len(ctx.candles)
-    if candle_count < settings.warmup_bars:
+    min_bars = settings.warmup_bars if ctx.history_seeded else 2
+    if candle_count < min_bars:
         return _signal(
             now,
             "Data",
             None,
             ema_gap,
             "Skipped",
-            f"Need {settings.warmup_bars}+ bars warmup (have {candle_count})",
+            f"Need {min_bars}+ bars for EMA warmup (have {candle_count})",
             strike,
             None,
         )
@@ -374,9 +376,12 @@ def build_market_context(
     candles_raw: dict,
     expiry: str,
     india_vix: Optional[float] = None,
+    session_candles_raw: Optional[dict] = None,
+    history_seeded: bool = False,
 ) -> MarketContext:
     spot = float(chain.get("last_price") or 0)
     candles = parse_candles(candles_raw)
+    session_candles = parse_candles(session_candles_raw) if session_candles_raw else candles
     closes = [bar.close for bar in candles]
     ema_series = calc_ema_series(closes, 9)
     ema_9 = ema_series[-1] if ema_series else spot
@@ -402,9 +407,9 @@ def build_market_context(
     walls = build_oi_wall_map(strikes, spot, window)
     filtered_chain = {"oc": filter_chain_atm_window(strikes, spot, window)}
     gamma_flip = estimate_gamma_flip(filtered_chain, spot, walls)
-    session_high = max((bar.high for bar in candles), default=spot)
-    session_low = min((bar.low for bar in candles), default=spot)
-    vwap_value, vwap_label = calc_vwap_or_twap(candles)
+    session_high = max((bar.high for bar in session_candles), default=spot)
+    session_low = min((bar.low for bar in session_candles), default=spot)
+    vwap_value, vwap_label = calc_vwap_or_twap(session_candles)
     return MarketContext(
         spot=spot,
         ema_9=ema_9,
@@ -427,4 +432,5 @@ def build_market_context(
         ema_20=ema_20,
         macd=macd_val,
         macd_signal=macd_signal_val,
+        history_seeded=history_seeded,
     )

@@ -36,8 +36,10 @@ class StrategySettings(BaseModel):
     macd_fast: int = Field(12, ge=2)
     macd_slow: int = Field(26, ge=3)
     macd_signal_period: int = Field(9, ge=2)
-    min_ema_sep_pct: float = Field(0.0001, ge=0)
-    min_ema_slope_pts: float = Field(3.0, ge=0)
+    warmup_bars: int = Field(20, ge=2)
+    atr_period: int = Field(14, ge=2)
+    big_bar_atr_mult: float = Field(0.6, ge=0)
+    require_macd: bool = False
     sl_pct: float = Field(0.30, gt=0, le=1)
     target_pct: float = Field(0.60, gt=0)
     target_pct_enabled: bool = True

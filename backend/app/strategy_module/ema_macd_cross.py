@@ -1,5 +1,5 @@
 """
-NIFTY 5m — EMA 9/20 cross + MACD confirmation, ATM option buying.
+NIFTY 5m — EMA 9/20 cross + big-bar filter, ATM option buying.
 Index signals; premium-based exits on the held option.
 """
 
@@ -22,6 +22,8 @@ class IndicatorBar:
     ema_slow: float
     macd: float
     macd_sig: float
+    atr: float
+    body: float
 
 
 def calc_macd_series(
@@ -40,6 +42,25 @@ def calc_macd_series(
     return macd_line, macd_sig, hist
 
 
+def calc_atr_series(candles: list[CandleBar], period: int = 14) -> list[float]:
+    if not candles:
+        return []
+    trs: list[float] = []
+    for i, bar in enumerate(candles):
+        if i == 0:
+            trs.append(max(bar.high - bar.low, 0.0))
+        else:
+            prev_close = candles[i - 1].close
+            trs.append(
+                max(
+                    bar.high - bar.low,
+                    abs(bar.high - prev_close),
+                    abs(bar.low - prev_close),
+                )
+            )
+    return calc_ema_series(trs, period)
+
+
 def build_indicator_bars(candles: list[CandleBar], settings: StrategySettings) -> list[IndicatorBar]:
     if not candles:
         return []
@@ -52,6 +73,7 @@ def build_indicator_bars(candles: list[CandleBar], settings: StrategySettings) -
         settings.macd_slow,
         settings.macd_signal_period,
     )
+    atr_series = calc_atr_series(candles, settings.atr_period)
     rows: list[IndicatorBar] = []
     for i, bar in enumerate(candles):
         rows.append(
@@ -64,34 +86,36 @@ def build_indicator_bars(candles: list[CandleBar], settings: StrategySettings) -
                 ema_slow=ema_slow[i],
                 macd=macd_line[i],
                 macd_sig=macd_sig[i],
+                atr=atr_series[i] if i < len(atr_series) else 0.0,
+                body=abs(bar.close - bar.open),
             )
         )
     return rows
 
 
-def entry_signal(prev2: IndicatorBar, prev: IndicatorBar, cur: IndicatorBar, settings: StrategySettings) -> Optional[str]:
-    """Cross on prev bar, confirm on cur. Returns 'CE', 'PE', or None."""
-    sep_pts = abs(cur.ema_fast - cur.ema_slow)
-    sep_ok = sep_pts >= settings.min_ema_sep_pct * cur.close
+def _is_big(bar: IndicatorBar, settings: StrategySettings) -> bool:
+    if bar.atr <= 0:
+        return False
+    return bar.body >= settings.big_bar_atr_mult * bar.atr
 
-    bull_cross = prev2.ema_fast <= prev2.ema_slow and prev.ema_fast > prev.ema_slow
-    bull_hold = cur.ema_fast > cur.ema_slow
-    bull_slope_pts = cur.ema_fast - prev.ema_fast
-    bull_slope = bull_slope_pts > 0
-    bull_strong = bull_slope_pts >= settings.min_ema_slope_pts
-    bull_close = cur.close > cur.ema_fast and cur.close > cur.ema_slow
-    bull_macd = cur.macd > cur.macd_sig
-    if bull_cross and bull_hold and bull_slope and bull_close and bull_macd and (sep_ok or bull_strong):
+
+def entry_signal(prev: IndicatorBar, cur: IndicatorBar, settings: StrategySettings) -> Optional[str]:
+    """Fresh 9/20 cross on cur bar + big impulse candle (cur or prev)."""
+    big_bull = (_is_big(cur, settings) and cur.close > cur.open) or (
+        _is_big(prev, settings) and prev.close > prev.open
+    )
+    big_bear = (_is_big(cur, settings) and cur.close < cur.open) or (
+        _is_big(prev, settings) and prev.close < prev.open
+    )
+
+    bull_cross = prev.ema_fast <= prev.ema_slow and cur.ema_fast > cur.ema_slow
+    bull_macd_ok = (cur.macd > cur.macd_sig) if settings.require_macd else True
+    if bull_cross and big_bull and bull_macd_ok:
         return "CE"
 
-    bear_cross = prev2.ema_fast >= prev2.ema_slow and prev.ema_fast < prev.ema_slow
-    bear_hold = cur.ema_fast < cur.ema_slow
-    bear_slope_pts = prev.ema_fast - cur.ema_fast
-    bear_slope = bear_slope_pts > 0
-    bear_strong = bear_slope_pts >= settings.min_ema_slope_pts
-    bear_close = cur.close < cur.ema_fast and cur.close < cur.ema_slow
-    bear_macd = cur.macd < cur.macd_sig
-    if bear_cross and bear_hold and bear_slope and bear_close and bear_macd and (sep_ok or bear_strong):
+    bear_cross = prev.ema_fast >= prev.ema_slow and cur.ema_fast < cur.ema_slow
+    bear_macd_ok = (cur.macd < cur.macd_sig) if settings.require_macd else True
+    if bear_cross and big_bear and bear_macd_ok:
         return "PE"
 
     return None
@@ -103,12 +127,12 @@ def signal_exit_hit(cur: IndicatorBar, side: str) -> bool:
     return cur.ema_fast > cur.ema_slow or cur.close > cur.ema_fast
 
 
-def entry_skip_reason(prev2: IndicatorBar, prev: IndicatorBar, cur: IndicatorBar, settings: StrategySettings) -> str:
-    side = entry_signal(prev2, prev, cur, settings)
+def entry_skip_reason(prev: IndicatorBar, cur: IndicatorBar, settings: StrategySettings) -> str:
+    side = entry_signal(prev, cur, settings)
     if side:
-        return f"{side} entry confirmed"
-    bull_cross = prev2.ema_fast <= prev2.ema_slow and prev.ema_fast > prev.ema_slow
-    bear_cross = prev2.ema_fast >= prev2.ema_slow and prev.ema_fast < prev.ema_slow
+        return f"{side} big-bar cross entry"
+    bull_cross = prev.ema_fast <= prev.ema_slow and cur.ema_fast > cur.ema_slow
+    bear_cross = prev.ema_fast >= prev.ema_slow and cur.ema_fast < cur.ema_slow
     if bull_cross or bear_cross:
-        return "Cross seen — waiting for confirmation (close/MACD/anti-chop)"
-    return "No fresh EMA 9/20 cross on prior bar"
+        return "Cross without big bar (body >= ATR mult on cross or prior bar)"
+    return "No fresh EMA 9/20 cross"

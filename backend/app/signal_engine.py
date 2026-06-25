@@ -239,21 +239,32 @@ def evaluate_entry_signal(
         )
 
     candle_count = len(ctx.candles)
-    min_bars = max(settings.ema_slow, settings.macd_slow) + settings.macd_signal_period + 2
-    if candle_count < min_bars:
-        return _signal(now, "Data", None, ema_gap, "Skipped", f"Need {min_bars}+ bars for EMA/MACD warmup", strike, None)
+    if candle_count < settings.warmup_bars:
+        return _signal(
+            now,
+            "Data",
+            None,
+            ema_gap,
+            "Skipped",
+            f"Need {settings.warmup_bars}+ bars warmup (have {candle_count})",
+            strike,
+            None,
+        )
 
     if candle_count <= _entry_evaluated_candle_count:
         return _signal(now, "Bar", None, ema_gap, "Skipped", "Waiting for next 5m bar close", strike, None)
 
     rows = build_indicator_bars(ctx.candles, settings)
-    prev2, prev, cur = rows[-3], rows[-2], rows[-1]
+    if len(rows) < 2:
+        return _signal(now, "Data", None, ema_gap, "Skipped", "Need 2+ bars for cross detection", strike, None)
+
+    prev, cur = rows[-2], rows[-1]
     _entry_evaluated_candle_count = candle_count
 
-    side = entry_signal(prev2, prev, cur, settings)
+    side = entry_signal(prev, cur, settings)
     if side is None:
-        reason = entry_skip_reason(prev2, prev, cur, settings)
-        return _signal(now, "EMA/MACD", None, ema_gap, "Skipped", reason, strike, None)
+        reason = entry_skip_reason(prev, cur, settings)
+        return _signal(now, "EMA cross", None, ema_gap, "Skipped", reason, strike, None)
 
     quote = ctx.atm_ce if side == "CE" else ctx.atm_pe
     option_ltp = quote.ltp
@@ -277,12 +288,14 @@ def evaluate_entry_signal(
 
     return _signal(
         now,
-        "EMA cross confirm",
+        "EMA big-bar cross",
         side,
         ema_gap,
         "Taken",
         (
-            f"9/20 cross + MACD confirm · SL -{settings.sl_pct:.0%} prem"
+            f"9/20 cross + big bar (body >= {settings.big_bar_atr_mult}x ATR)"
+            f"{ ' · MACD confirm' if settings.require_macd else ''}"
+            f" · SL -{settings.sl_pct:.0%} prem"
             f"{f' · TP +{settings.target_pct:.0%}' if settings.target_pct_enabled else ''}"
             f" · {lots} lot(s)"
         ),

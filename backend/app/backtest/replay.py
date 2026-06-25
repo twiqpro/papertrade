@@ -107,6 +107,9 @@ def replay_day(
         return {"date": str(trading_date), "skipped": True, "reason": quality["warnings"], "pnl": 0.0}
 
     strategy = get_strategy_v1()
+    from ..signal_engine import reset_entry_bar_tracking
+
+    reset_entry_bar_tracking()
     conn = get_connection()
     signals_count = 0
     trades_count = 0

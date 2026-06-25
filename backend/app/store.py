@@ -11,37 +11,15 @@ from .oi_analysis import classify_regime, gamma_context, regime_display_label
 from .models import DashboardPayload, MarketState, SessionMode, StrategySettings, Summary
 from .paper_broker import PaperBroker
 from .repository import save_signal, save_trade
-from .signal_engine import LOT_SIZE, MarketContext, capital_lots, evaluate_entry_signal
-from .strategy import DemoMarket, build_signal, nearest_nifty_strike
+from .signal_engine import LOT_SIZE, MarketContext, build_demo_context, capital_lots, evaluate_entry_signal
+from .strategy import DemoMarket, nearest_nifty_strike, is_trade_window_open
 
 
 IST = ZoneInfo("Asia/Kolkata")
 
 
 def _demo_context(market: DemoMarket, strike: int) -> MarketContext:
-    from .oi_analysis import OiWallMap
-    from .signal_engine import CandleBar, OptionQuote
-
-    bar = CandleBar(market.nifty_spot - 2, market.nifty_spot + 3, market.nifty_spot - 4, market.nifty_spot + 1, 1000)
-    walls = OiWallMap(call_wall=strike + 100, put_wall=strike - 100, pin_strike=float(strike), pcr=1.0, total_call_oi=0, total_put_oi=0)
-    return MarketContext(
-        spot=market.nifty_spot,
-        ema_9=market.ema_9,
-        ema_15=market.ema_15,
-        ema_9_history=[market.ema_9 - 1, market.ema_9 - 0.5, market.ema_9],
-        candles=[bar],
-        vwap=market.nifty_spot - 5,
-        atr_14=20,
-        session_high=market.nifty_spot + 30,
-        session_low=market.nifty_spot - 30,
-        atm_strike=strike,
-        atm_ce=OptionQuote(market.atm_ce_ltp, market.atm_ce_ltp - 0.5, market.atm_ce_ltp + 0.5, 0, 12, 0.5),
-        atm_pe=OptionQuote(market.atm_pe_ltp, market.atm_pe_ltp - 0.5, market.atm_pe_ltp + 0.5, 0, 12, -0.5),
-        walls=walls,
-        gamma_flip=float(strike),
-        expiry=datetime.now(IST).date().isoformat(),
-        chain_oc={},
-    )
+    return build_demo_context(market, strike)
 
 
 class PaperTradingStore:
@@ -63,8 +41,11 @@ class PaperTradingStore:
         return self.session_mode
 
     def reset_paper_day(self) -> None:
+        from .signal_engine import reset_entry_bar_tracking
+
         self.paper = PaperBroker()
         self.signals = []
+        reset_entry_bar_tracking()
 
     def _use_dhan(self) -> bool:
         settings = get_settings()
@@ -175,10 +156,8 @@ class PaperTradingStore:
                 signal = signal.model_copy(
                     update={"status": "Skipped", "reason": "Entry blocked: session paused"}
                 )
-        else:
-            signal = build_signal(now, self.settings, market)
-            close_meta = None
-            known_trade_ids = {trade.id for trade in self.paper.trades}
+
+        trade_window = is_trade_window_open(now, self.settings)
 
         signal_appended = False
         if (
@@ -227,7 +206,7 @@ class PaperTradingStore:
             peak = max(peak, running)
             max_drawdown = min(max_drawdown, running - peak)
 
-        ema_gap = abs(market.ema_9 - market.ema_15)
+        ema_gap = abs(market.ema_9 - (context.ema_20 if context and context.ema_20 else market.ema_15))
         trade_allowed = signal.status == "Taken" and self.paper.open_position is None
         side = signal.side
         quote_ltp = (
@@ -272,12 +251,13 @@ class PaperTradingStore:
                 timestamp=now,
                 session_mode=self.session_mode,
                 market_clock=now.strftime("%H:%M:%S IST"),
-                trade_window_open=True,
+                trade_window_open=trade_window,
                 nifty_spot=market.nifty_spot,
                 ema_9=market.ema_9,
                 ema_15=market.ema_15,
                 ema_gap=ema_gap,
                 vwap=context.vwap if context else None,
+                vwap_label=context.vwap_label if context else None,
                 call_wall=context.walls.call_wall if context else None,
                 put_wall=context.walls.put_wall if context else None,
                 pin_strike=context.walls.pin_strike if context else None,

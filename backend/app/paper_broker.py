@@ -7,8 +7,9 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from .models import OptionSide, StrategySettings, Trade, TradeResult
-from .oi_analysis import classify_regime, gamma_context
 from .signal_engine import LOT_SIZE, MarketContext, Signal, capital_lots, spread_aware_slippage
+from .strategy import is_market_close, is_square_off_time, parse_hhmm
+from .strategy_module.ema_macd_cross import build_indicator_bars, signal_exit_hit
 
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -69,32 +70,20 @@ def estimate_brokerage(lots: int) -> float:
     return BROKERAGE_PER_LOT * lots
 
 
+def _premium_exit_levels(entry_price: float, settings: StrategySettings) -> tuple[float, float]:
+    stop_price = max(0.05, entry_price * (1.0 - settings.sl_pct))
+    target_price = entry_price * (1.0 + settings.target_pct) if settings.target_pct_enabled else entry_price * 10
+    return target_price, stop_price
+
+
 def _snap_exit_levels(
     entry_price: float,
     settings: StrategySettings,
     context: MarketContext,
 ) -> tuple[float, float, str, bool]:
-    ema_gap = abs(context.ema_9 - context.ema_15)
-    regime = classify_regime(
-        ema_gap,
-        context.session_high,
-        context.session_low,
-        context.atr_14,
-        settings.strong_trend_gap,
-        settings.gamma_range_atr_ratio,
-    )
-    gamma = gamma_context(context.spot, context.gamma_flip)
-    regime_label = f"{regime}/{gamma}"
-    # use_trend_exits = settings.dynamic_exits_enabled and (regime == "TRENDING" or gamma == "NEG_GAMMA")
-
-    # Target and stop always use base values (no multiplier)
-    target_delta = settings.target_rupees
-    stop_delta = settings.stop_loss_rupees
-    trail_on = False
-
-    target_price = entry_price + target_delta
-    base_stop_price = entry_price - stop_delta
-    return target_price, base_stop_price, regime_label, trail_on
+    """Legacy helper for v1 backtest replay."""
+    target_price, stop_price = _premium_exit_levels(entry_price, settings)
+    return target_price, stop_price, "ema_macd_cross", True
 
 
 @dataclass
@@ -111,6 +100,9 @@ class PaperBroker:
             self.trades = []
             self.open_position = None
             self._last_entry_signal_id = None
+            from .signal_engine import reset_entry_bar_tracking
+
+            reset_entry_bar_tracking()
         return self.day
 
     def remaining_budget(self, settings: StrategySettings) -> float:
@@ -126,13 +118,10 @@ class PaperBroker:
             return False, "Open position — one at a time"
         if day.halted:
             return False, day.halt_reason or "Daily halt active"
-        # Re-entry cooldown check disabled
-        # if day.cooldown_until and now < day.cooldown_until:
-        #     return False, "Re-entry cooldown after stop-out"
-        if not settings.use_full_capital:
-            stop_risk = settings.stop_loss_rupees * LOT_SIZE
-            if self.remaining_budget(settings) < stop_risk:
-                return False, "Daily risk budget exhausted"
+        if settings.cooldown_enabled and day.cooldown_until and now < day.cooldown_until:
+            return False, "Re-entry cooldown after stop-out"
+        if day.trades_today >= settings.max_trades_per_day:
+            return False, f"Max trades per day ({settings.max_trades_per_day}) reached"
         return True, ""
 
     def _apply_trade_result(self, settings: StrategySettings, pnl: float, result: TradeResult) -> None:
@@ -147,29 +136,23 @@ class PaperBroker:
         if self.day.consecutive_losses >= settings.max_consecutive_losses:
             self.day.halted = True
             self.day.halt_reason = f"{settings.max_consecutive_losses} consecutive losses — halted"
-        if not settings.use_full_capital and self.remaining_budget(settings) <= 0:
-            self.day.halted = True
-            self.day.halt_reason = "Daily risk budget exhausted"
 
     def _cooldown_until(self, now: datetime, settings: StrategySettings) -> datetime:
         minutes = timeframe_minutes(settings.timeframe) * settings.reentry_cooldown_candles
         return now + timedelta(minutes=minutes)
 
     def _time_stop_at(self, entry_time: datetime, settings: StrategySettings, expiry: str) -> datetime:
-        candles = settings.time_stop_candles
-        return entry_time + timedelta(minutes=timeframe_minutes(settings.timeframe) * candles)
+        square_off = parse_hhmm(settings.square_off_time)
+        return entry_time.replace(hour=square_off.hour, minute=square_off.minute, second=0, microsecond=0)
 
-    def _update_trailing(self, position: OpenPosition, ltp: float, settings: StrategySettings) -> None:
-        # Trail logic disabled
-        # position.peak_ltp = max(position.peak_ltp, ltp)
-        # if not position.trail_enabled or not settings.trail_enabled:
-        #     return
-        # if position.peak_ltp - position.entry_price >= settings.trail_trigger_rupees:
-        #     position.trail_armed = True
-        # if position.trail_armed:
-        #     trail = position.peak_ltp - settings.trail_distance_rupees
-        #     position.trail_stop_price = max(position.base_stop_price, trail)
-        pass
+    def _update_premium_trail(self, position: OpenPosition, ltp: float, settings: StrategySettings) -> None:
+        position.peak_ltp = max(position.peak_ltp, ltp)
+        entry = position.entry_price
+        if not position.trail_armed and ltp >= entry * (1.0 + settings.trail_trigger_pct):
+            position.trail_armed = True
+        if position.trail_armed:
+            trail = position.peak_ltp * (1.0 - settings.trail_gap_pct)
+            position.trail_stop_price = max(position.base_stop_price, trail)
 
     def try_enter(
         self,
@@ -191,17 +174,16 @@ class PaperBroker:
             return None
 
         quote = context.atm_ce if signal.side == "CE" else context.atm_pe
-        lots = capital_lots(settings, quote.ltp)
+        if settings.use_full_capital:
+            lots = capital_lots(settings, quote.ltp)
+        else:
+            lots = settings.lots_per_trade
         if lots < 1:
             return None
 
         entry_slip = spread_aware_slippage(quote.bid, quote.ask, settings.fill_slippage_rupees)
         entry_price = quote.ltp + entry_slip
-        target_price, base_stop_price, regime_label, trail_on = _snap_exit_levels(
-            entry_price,
-            settings,
-            context,
-        )
+        target_price, base_stop_price = _premium_exit_levels(entry_price, settings)
         quantity = lots * LOT_SIZE
         contract = f"NIFTY {context.atm_strike} {signal.side}"
 
@@ -218,12 +200,12 @@ class PaperBroker:
             entry_time=now,
             expiry=context.expiry,
             time_stop_at=self._time_stop_at(now, settings, context.expiry),
-            regime_at_entry=regime_label,
+            regime_at_entry="ema_macd_cross",
             base_stop_price=base_stop_price,
             peak_ltp=entry_price,
             trail_armed=False,
             trail_stop_price=None,
-            trail_enabled=False,  # Trail disabled
+            trail_enabled=True,
         )
         self.open_position = position
         self._last_entry_signal_id = signal.id
@@ -264,10 +246,8 @@ class PaperBroker:
         self.open_position = None
         self._apply_trade_result(settings, pnl, result)
 
-        # Trail result check disabled
-        # if result in ("Stop", "Trail"):
-        if result in ("Stop",):
-            if self.day is not None:
+        if result in ("Stop", "Trail"):
+            if self.day is not None and settings.cooldown_enabled:
                 self.day.cooldown_until = self._cooldown_until(now, settings)
 
         return trade
@@ -282,22 +262,29 @@ class PaperBroker:
         if ltp <= 0:
             return None
 
-        # self._update_trailing(position, ltp, settings)  # Trail logic disabled
-        pass
+        self._update_premium_trail(position, ltp, settings)
+        entry = position.entry_price
 
-        if ltp >= position.target_price:
-            return self._close_position(now, settings, context, "Target", ltp)
-        if ltp <= position.base_stop_price:
-            return self._close_position(now, settings, context, "Stop", ltp)
-        # Trail exit check disabled
-        # if (
-        #     position.trail_armed
-        #     and position.trail_stop_price is not None
-        #     and ltp <= position.trail_stop_price
-        # ):
-        #     return self._close_position(now, settings, context, "Trail", ltp)
-        if now >= position.time_stop_at:
+        if is_square_off_time(now, settings) or is_market_close(now):
             return self._close_position(now, settings, context, "Time Exit", ltp)
+
+        if ltp <= entry * (1.0 - settings.sl_pct):
+            return self._close_position(now, settings, context, "Stop", ltp)
+
+        if settings.target_pct_enabled and ltp >= entry * (1.0 + settings.target_pct):
+            return self._close_position(now, settings, context, "Target", ltp)
+
+        if (
+            position.trail_armed
+            and position.trail_stop_price is not None
+            and ltp <= position.trail_stop_price
+        ):
+            return self._close_position(now, settings, context, "Trail", ltp)
+
+        if settings.use_signal_exit and context.candles:
+            rows = build_indicator_bars(context.candles, settings)
+            if rows and signal_exit_hit(rows[-1], position.side):
+                return self._close_position(now, settings, context, "Time Exit", ltp)
 
         return None
 
@@ -305,16 +292,14 @@ class PaperBroker:
         if self.open_position is None:
             return None
         pos = self.open_position
-        # Trail display disabled
-        # trail_part = ""
-        # if pos.trail_enabled:
-        #     if pos.trail_armed and pos.trail_stop_price is not None:
-        #         trail_part = f" · trail {pos.trail_stop_price:.2f} (armed)"
-        #     else:
-        #         trail_part = " · trail pending"
+        trail_part = ""
+        if pos.trail_armed and pos.trail_stop_price is not None:
+            trail_part = f" · trail {pos.trail_stop_price:.2f} (armed)"
+        elif pos.trail_enabled:
+            trail_part = " · trail pending"
         return (
             f"{pos.contract} @ Rs {pos.entry_price:.2f} · TP {pos.target_price:.2f} · "
-            f"SL {pos.base_stop_price:.2f} · {pos.lots} lot · {pos.regime_at_entry}"
+            f"SL {pos.base_stop_price:.2f}{trail_part} · {pos.lots} lot · {pos.regime_at_entry}"
         )
 
     def open_position_trade(self, context: MarketContext, settings: StrategySettings) -> Optional[Trade]:
@@ -325,8 +310,7 @@ class PaperBroker:
         quote = quote_for_strike(context, position.strike, position.side)
         ltp = quote.ltp
         if ltp > 0:
-            # self._update_trailing(position, ltp, settings)  # Trail logic disabled
-            pass
+            self._update_premium_trail(position, ltp, settings)
 
         unrealized = 0.0
         mark_price: Optional[float] = None
@@ -349,10 +333,6 @@ class PaperBroker:
             pnl=round(unrealized, 2),
             target_price=round(position.target_price, 2),
             stop_price=round(position.base_stop_price, 2),
-            # Trail display fields disabled
-            # trail_stop_price=round(position.trail_stop_price, 2) if position.trail_stop_price is not None else None,
-            # trail_armed=position.trail_armed if position.trail_enabled else False,
-            trail_stop_price=None,
-            trail_armed=False,
+            trail_stop_price=round(position.trail_stop_price, 2) if position.trail_stop_price is not None else None,
+            trail_armed=position.trail_armed if position.trail_enabled else False,
         )
-

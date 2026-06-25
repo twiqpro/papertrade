@@ -9,6 +9,7 @@ from .models import Signal, StrategySettings, Trade
 
 
 LOT_SIZE = 65
+MARKET_CLOSE = time(15, 30)
 
 
 @dataclass
@@ -26,7 +27,27 @@ def parse_hhmm(value: str) -> time:
 
 
 def is_trade_window_open(now: datetime, settings: StrategySettings) -> bool:
-    return True
+    current = now.time()
+    start = parse_hhmm(settings.trade_start)
+    end = parse_hhmm(getattr(settings, "trade_end", "14:30"))
+    return start <= current <= end
+
+
+def is_square_off_time(now: datetime, settings: StrategySettings) -> bool:
+    return now.time() >= parse_hhmm(getattr(settings, "square_off_time", "15:15"))
+
+
+def is_market_close(now: datetime) -> bool:
+    return now.time() >= MARKET_CLOSE
+
+
+def is_expiry_entry_allowed(now: datetime, settings: StrategySettings, is_expiry_day: bool) -> bool:
+    if not is_expiry_day:
+        return True
+    if settings.expiry_day_policy == "aggressive":
+        return is_trade_window_open(now, settings)
+    cutoff = parse_hhmm(settings.expiry_day_entry_cutoff)
+    return now.time() <= cutoff
 
 
 def nearest_nifty_strike(spot: float) -> int:
@@ -40,39 +61,12 @@ def affordable_lots(capital: float, option_ltp: float) -> int:
 
 
 def build_signal(now: datetime, settings: StrategySettings, market: DemoMarket) -> Signal:
-    """Legacy demo-path signal. Live Dhan path uses signal_engine.evaluate_entry_signal."""
-    ema_gap = abs(market.ema_9 - market.ema_15)
+    """Deprecated — use signal_engine.evaluate_entry_signal with MarketContext."""
+    from .signal_engine import build_demo_context, evaluate_entry_signal
+
     strike = nearest_nifty_strike(market.nifty_spot)
-    gap_ok = ema_gap >= settings.ema_gap_min_points
-    side = "CE" if market.ema_9 > market.ema_15 else "PE"
-    option_ltp = market.atm_ce_ltp if side == "CE" else market.atm_pe_ltp
-
-    if not gap_ok:
-        return Signal(
-            id=str(uuid4()),
-            timestamp=now,
-            time=now.strftime("%H:%M"),
-            signal="EMA trend check",
-            side=side,
-            ema_gap=ema_gap,
-            status="Skipped",
-            reason="EMA gap below threshold",
-            strike=strike,
-            option_ltp=option_ltp,
-        )
-
-    return Signal(
-        id=str(uuid4()),
-        timestamp=now,
-        time=now.strftime("%H:%M"),
-        signal="ATM entry",
-        side=side,
-        ema_gap=ema_gap,
-        status="Taken",
-        reason="EMA direction and gap confirmed",
-        strike=strike,
-        option_ltp=option_ltp,
-    )
+    ctx = build_demo_context(market, strike)
+    return evaluate_entry_signal(now, settings, ctx, has_open_position=False)
 
 
 def demo_trades(settings: StrategySettings) -> list[Trade]:

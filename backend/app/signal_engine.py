@@ -13,6 +13,7 @@ from .oi_analysis import (
     choose_trend_side,
     classify_regime,
     estimate_gamma_flip,
+    filter_chain_atm_window,
     gamma_context,
     headroom_ok,
     pcr_ok,
@@ -21,7 +22,7 @@ from .oi_analysis import (
     regime_display_label,
     reversal_signal,
 )
-from .strategy import LOT_SIZE, nearest_nifty_strike
+from .strategy import LOT_SIZE, is_trade_window_open, nearest_nifty_strike, parse_hhmm
 
 
 INDIA_VIX_SECURITY_ID = 26
@@ -65,6 +66,10 @@ class MarketContext:
     expiry: str
     chain_oc: dict
     india_vix: Optional[float] = None
+    vwap_label: str = "VWAP"
+    ema_20: float = 0.0
+    macd: float = 0.0
+    macd_signal: float = 0.0
 
 
 def calc_ema_series(closes: list[float], period: int) -> list[float]:
@@ -77,7 +82,7 @@ def calc_ema_series(closes: list[float], period: int) -> list[float]:
     return values
 
 
-def calc_vwap(candles: list[CandleBar]) -> float:
+def calc_vwap_or_twap(candles: list[CandleBar]) -> tuple[float, str]:
     numer = 0.0
     denom = 0.0
     for bar in candles:
@@ -85,9 +90,16 @@ def calc_vwap(candles: list[CandleBar]) -> float:
         volume = max(bar.volume, 0.0)
         numer += typical * volume
         denom += volume
-    if denom <= 0 and candles:
-        return candles[-1].close
-    return numer / denom if denom > 0 else 0.0
+    if denom > 0:
+        return numer / denom, "VWAP"
+    if not candles:
+        return 0.0, "TWAP"
+    return sum((bar.high + bar.low + bar.close) / 3 for bar in candles) / len(candles), "TWAP"
+
+
+def calc_vwap(candles: list[CandleBar]) -> float:
+    value, _ = calc_vwap_or_twap(candles)
+    return value
 
 
 def calc_atr(candles: list[CandleBar], period: int = 14) -> float:
@@ -154,6 +166,48 @@ def _signal(
     )
 
 
+def _enrich_context_indicators(ctx: MarketContext, settings: StrategySettings) -> MarketContext:
+    from .strategy_module.ema_macd_cross import build_indicator_bars
+
+    if not ctx.candles:
+        return ctx
+    rows = build_indicator_bars(ctx.candles, settings)
+    if not rows:
+        return ctx
+    last = rows[-1]
+    return MarketContext(
+        spot=ctx.spot,
+        ema_9=last.ema_fast,
+        ema_15=ctx.ema_15,
+        ema_9_history=ctx.ema_9_history,
+        candles=ctx.candles,
+        vwap=ctx.vwap,
+        atr_14=ctx.atr_14,
+        session_high=ctx.session_high,
+        session_low=ctx.session_low,
+        atm_strike=ctx.atm_strike,
+        atm_ce=ctx.atm_ce,
+        atm_pe=ctx.atm_pe,
+        walls=ctx.walls,
+        gamma_flip=ctx.gamma_flip,
+        expiry=ctx.expiry,
+        chain_oc=ctx.chain_oc,
+        india_vix=ctx.india_vix,
+        vwap_label=ctx.vwap_label,
+        ema_20=last.ema_slow,
+        macd=last.macd,
+        macd_signal=last.macd_sig,
+    )
+
+
+_entry_evaluated_candle_count: int = -1
+
+
+def reset_entry_bar_tracking() -> None:
+    global _entry_evaluated_candle_count
+    _entry_evaluated_candle_count = -1
+
+
 def evaluate_entry_signal(
     now: datetime,
     settings: StrategySettings,
@@ -161,165 +215,108 @@ def evaluate_entry_signal(
     remaining_daily_budget: Optional[float] = None,
     has_open_position: bool = False,
 ) -> Signal:
-    ema_gap = abs(ctx.ema_9 - ctx.ema_15)
-    strike = ctx.atm_strike
-    compressed = range_compressed(
-        ctx.session_high,
-        ctx.session_low,
-        ctx.atr_14,
-        settings.gamma_range_atr_ratio,
-    )
-    regime = classify_regime(
-        ema_gap,
-        ctx.session_high,
-        ctx.session_low,
-        ctx.atr_14,
-        settings.strong_trend_gap,
-        settings.gamma_range_atr_ratio,
-    )
-    gamma = gamma_context(ctx.spot, ctx.gamma_flip)
+    global _entry_evaluated_candle_count
 
-    side = choose_trend_side(ctx.ema_9, ctx.ema_15, ctx.ema_9_history)
-    reversal = False
-    if side is None:
-        rev_side = reversal_signal(
-            ctx.spot,
-            ctx.walls,
-            regime,
-            compressed,
-            settings.reversal_enabled,
-            settings.pcr_ce_block,
-            settings.pcr_pe_block,
+    from .strategy_module.ema_macd_cross import build_indicator_bars, entry_signal, entry_skip_reason
+
+    ctx = _enrich_context_indicators(ctx, settings)
+    strike = ctx.atm_strike
+    ema_gap = abs(ctx.ema_9 - ctx.ema_20) if ctx.ema_20 else abs(ctx.ema_9 - ctx.ema_15)
+
+    if has_open_position:
+        return _signal(now, "Position", None, ema_gap, "Skipped", "Open paper position — one at a time", strike, None)
+
+    if not is_trade_window_open(now, settings):
+        return _signal(
+            now,
+            "Window",
+            None,
+            ema_gap,
+            "Skipped",
+            f"Outside entry window {settings.trade_start}-{settings.trade_end}",
+            strike,
+            None,
         )
-        if rev_side is None:
-            probe = ctx.atm_ce if ctx.ema_9 > ctx.ema_15 else ctx.atm_pe
-            return _signal(
-                now,
-                "Layer 0",
-                "CE" if ctx.ema_9 > ctx.ema_15 else "PE",
-                ema_gap,
-                "Skipped",
-                "No clean trend direction",
-                strike,
-                probe.ltp,
-            )
-        side = rev_side
-        reversal = True
+
+    candle_count = len(ctx.candles)
+    min_bars = max(settings.ema_slow, settings.macd_slow) + settings.macd_signal_period + 2
+    if candle_count < min_bars:
+        return _signal(now, "Data", None, ema_gap, "Skipped", f"Need {min_bars}+ bars for EMA/MACD warmup", strike, None)
+
+    if candle_count <= _entry_evaluated_candle_count:
+        return _signal(now, "Bar", None, ema_gap, "Skipped", "Waiting for next 5m bar close", strike, None)
+
+    rows = build_indicator_bars(ctx.candles, settings)
+    prev2, prev, cur = rows[-3], rows[-2], rows[-1]
+    _entry_evaluated_candle_count = candle_count
+
+    side = entry_signal(prev2, prev, cur, settings)
+    if side is None:
+        reason = entry_skip_reason(prev2, prev, cur, settings)
+        return _signal(now, "EMA/MACD", None, ema_gap, "Skipped", reason, strike, None)
 
     quote = ctx.atm_ce if side == "CE" else ctx.atm_pe
     option_ltp = quote.ltp
-    signal_prefix = "Reversal" if reversal else "ATM entry"
-
-    if has_open_position:
-        return _signal(now, "Position", side, ema_gap, "Skipped", "Open paper position — one at a time", strike, option_ltp)
-
-    if not reversal:
-        if ema_gap < settings.ema_gap_min_points:
-            return _signal(now, "Layer A", side, ema_gap, "Skipped", "EMA gap below 3-point threshold", strike, option_ltp)
-
-        if len(ctx.ema_9_history) >= 3:
-            slope = ctx.ema_9_history[-1] - ctx.ema_9_history[-3]
-            if side == "CE" and slope <= 0:
-                return _signal(now, "Layer A", side, ema_gap, "Skipped", "EMA9 not rising over last 2 candles", strike, option_ltp)
-            if side == "PE" and slope >= 0:
-                return _signal(now, "Layer A", side, ema_gap, "Skipped", "EMA9 not falling over last 2 candles", strike, option_ltp)
-
-        if ctx.candles:
-            bar = ctx.candles[-1]
-            candle_range = max(bar.high - bar.low, 0.01)
-            body = abs(bar.close - bar.open)
-            body_ratio = body / candle_range
-            bullish = bar.close > bar.open
-            bearish = bar.close < bar.open
-            if body_ratio < settings.min_candle_body_ratio:
-                return _signal(now, "Layer A", side, ema_gap, "Skipped", "Last candle body too small (doji/indecision)", strike, option_ltp)
-            if side == "CE" and not bullish:
-                return _signal(now, "Layer A", side, ema_gap, "Skipped", "Last candle not bullish for CE", strike, option_ltp)
-            if side == "PE" and not bearish:
-                return _signal(now, "Layer A", side, ema_gap, "Skipped", "Last candle not bearish for PE", strike, option_ltp)
-
-    if ctx.vwap > 0:
-        if side == "CE" and ctx.spot < ctx.vwap:
-            return _signal(now, "Layer B", side, ema_gap, "Skipped", "Price below VWAP — counter-momentum for CE", strike, option_ltp)
-        if side == "PE" and ctx.spot > ctx.vwap:
-            return _signal(now, "Layer B", side, ema_gap, "Skipped", "Price above VWAP — counter-momentum for PE", strike, option_ltp)
-
-    ok, reason = headroom_ok(
-        side,
-        ctx.spot,
-        ctx.walls,
-        ctx.candles,
-        settings.wall_headroom_points,
-        settings.wall_break_lookback,
-    )
-    if not ok:
-        return _signal(now, "Layer C", side, ema_gap, "Skipped", reason, strike, option_ltp)
-
-    ok, reason = pcr_ok(
-        side,
-        ctx.walls.pcr,
-        regime,
-        gamma,
-        settings.pcr_filter_enabled,
-        settings.pcr_ce_block,
-        settings.pcr_pe_block,
-    )
-    if not ok:
-        return _signal(now, "Layer C", side, ema_gap, "Skipped", reason, strike, option_ltp)
-
-    ok, reason = pin_layer_ok(
-        ctx.spot,
-        ctx.walls,
-        settings.pin_band_points,
-        compressed,
-        regime,
-        gamma,
-    )
-    if not ok:
-        return _signal(now, "Layer D", side, ema_gap, "Skipped", reason, strike, option_ltp)
 
     spread = max(quote.ask - quote.bid, 0.0)
-    if spread > settings.max_bid_ask_spread:
-        return _signal(now, "Layer E", side, ema_gap, "Skipped", f"Bid-ask spread Rs {spread:.2f} too wide", strike, option_ltp)
+    if settings.spread_filter_enabled and quote.bid > 0 and quote.ask > 0 and spread > settings.max_bid_ask_spread:
+        return _signal(now, "Liquidity", side, ema_gap, "Skipped", f"Bid-ask spread Rs {spread:.2f} too wide", strike, option_ltp)
 
-    if quote.ltp <= 0:
-        return _signal(now, "Layer E", side, ema_gap, "Skipped", "ATM option has no LTP", strike, option_ltp)
+    if option_ltp <= 0:
+        return _signal(now, "Liquidity", side, ema_gap, "Skipped", "ATM option has no LTP", strike, option_ltp)
 
-    if ctx.india_vix is not None and ctx.india_vix >= settings.max_india_vix:
-        return _signal(now, "Layer E", side, ema_gap, "Skipped", f"India VIX {ctx.india_vix:.1f} above cap", strike, option_ltp)
+    if settings.vix_filter_enabled and ctx.india_vix is not None and ctx.india_vix >= settings.max_india_vix:
+        return _signal(now, "Liquidity", side, ema_gap, "Skipped", f"India VIX {ctx.india_vix:.1f} above cap", strike, option_ltp)
 
-    lots = capital_lots(settings, option_ltp)
+    if settings.use_full_capital:
+        lots = capital_lots(settings, option_ltp)
+    else:
+        lots = settings.lots_per_trade
     if lots < 1:
-        return _signal(now, "Sizing", side, ema_gap, "Skipped", "Risk budget / capital cannot support 1 lot", strike, option_ltp)
-
-    regime_label = regime_display_label(regime, gamma)
-    hr_ok, hr_reason = headroom_ok(
-        side,
-        ctx.spot,
-        ctx.walls,
-        ctx.candles,
-        settings.wall_headroom_points,
-        settings.wall_break_lookback,
-    )
-    pcr_ok_msg = pcr_ok(
-        side,
-        ctx.walls.pcr,
-        regime,
-        gamma,
-        settings.pcr_filter_enabled,
-        settings.pcr_ce_block,
-        settings.pcr_pe_block,
-    )[1]
+        return _signal(now, "Sizing", side, ema_gap, "Skipped", "Cannot support 1 lot", strike, option_ltp)
 
     return _signal(
         now,
-        signal_prefix,
+        "EMA cross confirm",
         side,
         ema_gap,
         "Taken",
-        f"{regime_label} · {hr_reason} · {pcr_ok_msg} · {lots} lot(s)",
+        (
+            f"9/20 cross + MACD confirm · SL -{settings.sl_pct:.0%} prem"
+            f"{f' · TP +{settings.target_pct:.0%}' if settings.target_pct_enabled else ''}"
+            f" · {lots} lot(s)"
+        ),
         strike,
         option_ltp,
+    )
+
+
+def build_demo_context(market: DemoMarket, strike: int, expiry: str | None = None) -> MarketContext:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    IST = ZoneInfo("Asia/Kolkata")
+    bar = CandleBar(market.nifty_spot - 2, market.nifty_spot + 3, market.nifty_spot - 4, market.nifty_spot + 1, 1000)
+    walls = OiWallMap(call_wall=strike + 100, put_wall=strike - 100, pin_strike=float(strike), pcr=1.0, total_call_oi=0, total_put_oi=0)
+    vwap_value, vwap_label = calc_vwap_or_twap([bar])
+    return MarketContext(
+        spot=market.nifty_spot,
+        ema_9=market.ema_9,
+        ema_15=market.ema_15,
+        ema_9_history=[market.ema_9 - 1, market.ema_9 - 0.5, market.ema_9],
+        candles=[bar],
+        vwap=vwap_value,
+        vwap_label=vwap_label,
+        atr_14=20,
+        session_high=market.nifty_spot + 30,
+        session_low=market.nifty_spot - 30,
+        atm_strike=strike,
+        atm_ce=OptionQuote(market.atm_ce_ltp, market.atm_ce_ltp - 0.5, market.atm_ce_ltp + 0.5, 0, 12, 0.5),
+        atm_pe=OptionQuote(market.atm_pe_ltp, market.atm_pe_ltp - 0.5, market.atm_pe_ltp + 0.5, 0, 12, -0.5),
+        walls=walls,
+        gamma_flip=float(strike),
+        expiry=expiry or datetime.now(IST).date().isoformat(),
+        chain_oc={},
     )
 
 
@@ -371,6 +368,12 @@ def build_market_context(
     ema_series = calc_ema_series(closes, 9)
     ema_9 = ema_series[-1] if ema_series else spot
     ema_15 = calc_ema_series(closes, 15)[-1] if closes else spot
+    ema_20 = calc_ema_series(closes, 20)[-1] if closes else spot
+    from .strategy_module.ema_macd_cross import calc_macd_series
+
+    macd_line, macd_sig, _ = calc_macd_series(closes, 12, 26, 9)
+    macd_val = macd_line[-1] if macd_line else 0.0
+    macd_signal_val = macd_sig[-1] if macd_sig else 0.0
     from .strategy import nearest_nifty_strike as strike_fn
 
     atm_strike = strike_fn(spot)
@@ -382,17 +385,21 @@ def build_market_context(
         row = strikes[closest_key]
         atm_strike = int(float(closest_key))
     row = row or {"ce": {}, "pe": {}}
-    walls = build_oi_wall_map(chain, spot)
-    gamma_flip = estimate_gamma_flip(chain, spot, walls)
+    window = 10
+    walls = build_oi_wall_map(strikes, spot, window)
+    filtered_chain = {"oc": filter_chain_atm_window(strikes, spot, window)}
+    gamma_flip = estimate_gamma_flip(filtered_chain, spot, walls)
     session_high = max((bar.high for bar in candles), default=spot)
     session_low = min((bar.low for bar in candles), default=spot)
+    vwap_value, vwap_label = calc_vwap_or_twap(candles)
     return MarketContext(
         spot=spot,
         ema_9=ema_9,
         ema_15=ema_15,
         ema_9_history=ema_series[-3:],
         candles=candles,
-        vwap=calc_vwap(candles),
+        vwap=vwap_value,
+        vwap_label=vwap_label,
         atr_14=calc_atr(candles),
         session_high=session_high,
         session_low=session_low,
@@ -402,6 +409,9 @@ def build_market_context(
         walls=walls,
         gamma_flip=gamma_flip,
         expiry=expiry,
-        chain_oc=strikes,
+        chain_oc=filter_chain_atm_window(strikes, spot, window),
         india_vix=india_vix,
+        ema_20=ema_20,
+        macd=macd_val,
+        macd_signal=macd_signal_val,
     )

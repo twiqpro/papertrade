@@ -11,26 +11,51 @@ TradeResult = Literal["Target", "Stop", "Trail", "Time Exit", "Open"]
 OptionSide = Literal["CE", "PE"]
 ExitMode = Literal["fast_scalp", "balanced"]
 ExpiryDayPolicy = Literal["conservative", "aggressive"]
+ReplayMode = Literal["core", "full_context"]
+VwapLabel = Literal["VWAP", "TWAP"]
 
 
 class StrategySettings(BaseModel):
     capital_budget: float = Field(100000, ge=0)
     daily_risk: float = Field(100000, ge=0)
     per_trade_risk_cap: float = Field(100000, ge=0)
-    use_full_capital: bool = True
+    use_full_capital: bool = False
+    lots_per_trade: int = Field(1, ge=1)
     target_rupees: float = Field(2, gt=0)
-    stop_loss_rupees: float = Field(5, gt=0)
+    stop_loss_rupees: float = Field(10, gt=0)
     ema_gap_min_points: float = Field(3, ge=0)
     min_candle_body_ratio: float = Field(0.5, ge=0, le=1)
     max_trades_per_day: int = Field(9999, ge=1)
     max_consecutive_losses: int = Field(2, ge=1)
     timeframe: Timeframe = "5m"
     trade_start: str = "09:30"
-    trade_end: str = "11:30"
+    trade_end: str = "14:30"
+    square_off_time: str = "15:15"
+    ema_fast: int = Field(9, ge=2)
+    ema_slow: int = Field(20, ge=3)
+    macd_fast: int = Field(12, ge=2)
+    macd_slow: int = Field(26, ge=3)
+    macd_signal_period: int = Field(9, ge=2)
+    min_ema_sep_pct: float = Field(0.0001, ge=0)
+    min_ema_slope_pts: float = Field(3.0, ge=0)
+    sl_pct: float = Field(0.30, gt=0, le=1)
+    target_pct: float = Field(0.60, gt=0)
+    target_pct_enabled: bool = True
+    trail_trigger_pct: float = Field(0.25, ge=0)
+    trail_gap_pct: float = Field(0.15, ge=0)
+    use_signal_exit: bool = True
     time_stop_candles: int = Field(2, ge=1)
     reentry_cooldown_candles: int = Field(1, ge=0)
     fill_slippage_rupees: float = Field(0, ge=0)
+    exit_slippage_rupees: float = Field(0, ge=0)
+    brokerage_per_lot_round_trip: float = Field(40, ge=0)
     max_bid_ask_spread: float = Field(1.5, ge=0)
+    spread_filter_enabled: bool = True
+    vix_filter_enabled: bool = True
+    cooldown_enabled: bool = False
+    chain_staleness_seconds: int = Field(75, ge=1)
+    replay_mode: ReplayMode = "full_context"
+    option_chain_window: int = Field(10, ge=1)
     wall_headroom_points: float = Field(12, ge=0)
     wall_break_lookback: int = Field(3, ge=1)
     strong_trend_gap: float = Field(8, ge=0)
@@ -40,10 +65,10 @@ class StrategySettings(BaseModel):
     pcr_ce_block: float = Field(0.7, ge=0)
     pcr_pe_block: float = Field(1.3, ge=0)
     reversal_enabled: bool = False
-    dynamic_exits_enabled: bool = True
+    dynamic_exits_enabled: bool = False
     target_trend_multiplier: float = Field(2.5, gt=0)
     stop_trend_multiplier: float = Field(1.0, gt=0)
-    trail_enabled: bool = True
+    trail_enabled: bool = False
     trail_trigger_rupees: float = Field(2.0, ge=0)
     trail_distance_rupees: float = Field(2.0, ge=0)
     max_india_vix: float = Field(22.0, ge=0)
@@ -64,6 +89,7 @@ class MarketState(BaseModel):
     ema_15: float
     ema_gap: float
     vwap: Optional[float] = None
+    vwap_label: Optional[VwapLabel] = None
     call_wall: Optional[float] = None
     put_wall: Optional[float] = None
     pin_strike: Optional[float] = None
@@ -136,3 +162,10 @@ class DashboardPayload(BaseModel):
     summary: Summary
     signals: list[Signal]
     trades: list[Trade]
+
+
+class BacktestRunRequest(BaseModel):
+    settings: StrategySettings
+    from_date: str
+    to_date: str
+    cost_preset: str = "base"

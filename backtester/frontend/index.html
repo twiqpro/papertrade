@@ -100,6 +100,16 @@
             </select>
           </label>
           <span class="strikes-hint">Upload many files or a whole folder (date from path like 2026-05-11/) · interval &amp; strikes must match files</span>
+          <div id="download-progress" class="download-progress" hidden>
+            <div class="download-progress-head">
+              <span id="download-progress-label">Downloading…</span>
+              <span id="download-progress-pct">0%</span>
+            </div>
+            <div class="download-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="download-progress-bar" class="download-progress-bar"></div>
+            </div>
+            <p id="download-progress-detail" class="download-progress-detail muted"></p>
+          </div>
           <span id="download-status" class="status-text" aria-live="polite"></span>
           <span id="cloud-cache-note" class="strikes-hint muted" hidden></span>
         </div>

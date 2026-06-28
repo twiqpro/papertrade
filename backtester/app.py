@@ -60,6 +60,13 @@ class DownloadRequest(BaseModel):
     force: bool = False
 
 
+class DownloadDayRequest(BaseModel):
+    date: str
+    interval: str = "5min"
+    strikes_around_atm: int = Field(default=10, ge=1, le=18)
+    force: bool = False
+
+
 class RunRequest(BaseModel):
     code: str
     symbol: str = "NIFTY"
@@ -127,6 +134,25 @@ def download(req: DownloadRequest):
             "options_skipped": meta.get("options_skipped", 0),
             "days": meta.get("days", 0),
         }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/download-day")
+def download_day(req: DownloadDayRequest):
+    try:
+        result = feed.download_day(
+            req.date,
+            req.interval,
+            req.strikes_around_atm,
+            force=req.force,
+        )
+        if not result["ok"]:
+            parts = [p for p in (result.get("spot_error"), result.get("options_error")) if p]
+            raise HTTPException(status_code=400, detail=" · ".join(parts))
+        return {"ok": True, **result}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

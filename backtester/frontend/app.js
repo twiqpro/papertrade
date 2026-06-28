@@ -315,31 +315,119 @@ async function parseApiResponse(res) {
   }
 }
 
+function dayResultLabel(kind, result) {
+  if (!result) return `${kind}: failed`;
+  if (result.skipped) return `${kind}: cached`;
+  return `${kind}: ${result.rows ?? "?"} rows`;
+}
+
+function setDownloadProgress({ pct, label, detail, visible = true }) {
+  const wrap = $("#download-progress");
+  const bar = $("#download-progress-bar");
+  const track = wrap?.querySelector(".download-progress-track");
+  const pctEl = $("#download-progress-pct");
+  const labelEl = $("#download-progress-label");
+  const detailEl = $("#download-progress-detail");
+  if (!wrap) return;
+  wrap.hidden = !visible;
+  const n = Math.max(0, Math.min(100, pct));
+  if (bar) bar.style.width = `${n}%`;
+  if (track) track.setAttribute("aria-valuenow", String(n));
+  if (pctEl) pctEl.textContent = `${n}%`;
+  if (labelEl && label) labelEl.textContent = label;
+  if (detailEl && detail !== undefined) detailEl.textContent = detail;
+}
+
 async function downloadData(force = false) {
   const status = $("#download-status");
   const btn = $("#download-btn");
   const forceBtn = $("#force-download-btn");
-  const p = formParams();
+  const start = $("#start-date").value;
+  const end = $("#end-date").value;
+  const interval = $("#interval").value;
+  const strikes = Number($("#strikes").value) || 10;
+  const days = datesInRange(start, end);
+
+  if (!start || !end) {
+    status.textContent = "Set Start and End dates first";
+    status.className = "status-text err";
+    return;
+  }
+  if (!days.length) {
+    status.textContent = "No trading days in that range";
+    status.className = "status-text err";
+    return;
+  }
+
   btn.disabled = true;
   if (forceBtn) forceBtn.disabled = true;
-  status.textContent = force ? "Force refreshing from Yahoo/Dhan…" : "Downloading missing days…";
+  status.textContent = "";
   status.className = "status-text";
 
+  let spotSkipped = 0;
+  let optSkipped = 0;
+  let spotFetched = 0;
+  let optFetched = 0;
+  const errors = [];
+
   try {
-    const res = await fetch(apiUrl("/api/download"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...p, dates: undefined, force }),
-    });
-    const { ok, data } = await parseApiResponse(res);
-    if (!ok) throw new Error(data.detail || "Download failed");
-    const skipped = (data.spot_skipped || 0) + (data.options_skipped || 0);
-    status.textContent = `${data.days} day(s) · ${data.rows} rows · ${skipped} skipped (already cached)`;
-    status.className = "status-text ok";
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i];
+      const pct = Math.round((i / days.length) * 100);
+      setDownloadProgress({
+        pct,
+        label: `Day ${i + 1} of ${days.length}: ${day}`,
+        detail: force ? "Fetching spot (Yahoo) + options (Dhan)…" : "Downloading missing spot + options…",
+      });
+
+      const res = await fetch(apiUrl("/api/download-day"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: day, interval, strikes_around_atm: strikes, force }),
+      });
+      const { ok, data } = await parseApiResponse(res);
+      if (!ok) {
+        errors.push(`${day}: ${data.detail || "failed"}`);
+        setDownloadProgress({
+          pct: Math.round(((i + 1) / days.length) * 100),
+          label: `Day ${i + 1} of ${days.length}: ${day}`,
+          detail: `Error — ${data.detail || "failed"}`,
+        });
+        continue;
+      }
+
+      if (data.spot?.skipped) spotSkipped++;
+      else if (data.spot) spotFetched++;
+      if (data.options?.skipped) optSkipped++;
+      else if (data.options) optFetched++;
+
+      setDownloadProgress({
+        pct: Math.round(((i + 1) / days.length) * 100),
+        label: `Day ${i + 1} of ${days.length}: ${day}`,
+        detail: `${dayResultLabel("spot", data.spot)} · ${dayResultLabel("options", data.options)}`,
+      });
+      await loadInventory();
+    }
+
+    const summary = `${days.length} day(s) · spot: ${spotFetched} fetched, ${spotSkipped} cached · options: ${optFetched} fetched, ${optSkipped} cached`;
+    if (errors.length) {
+      status.textContent = `${summary}. Errors: ${errors.slice(0, 2).join("; ")}${errors.length > 2 ? "…" : ""}`;
+      status.className = "status-text err";
+      setDownloadProgress({
+        pct: 100,
+        label: "Finished with errors",
+        detail: errors.slice(0, 3).join(" · "),
+      });
+    } else {
+      status.textContent = summary;
+      status.className = "status-text ok";
+      setDownloadProgress({ pct: 100, label: "Download complete", detail: summary });
+    }
     await loadInventory();
   } catch (err) {
     status.textContent = err.message;
     status.className = "status-text err";
+    setDownloadProgress({ pct: 0, label: "Download failed", detail: err.message });
   } finally {
     btn.disabled = false;
     if (forceBtn) forceBtn.disabled = false;
@@ -388,12 +476,16 @@ async function uploadFiles(kind, fileList, inputEl) {
   const fixedDay = $("#upload-date")?.value || (files.length === 1 ? $("#start-date").value : "");
   let ok = 0;
   const errors = [];
+  status.textContent = "";
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const day = fixedDay || inferDayFromFile(file);
-    status.textContent = `Uploading ${kind} ${i + 1}/${files.length}: ${file.name}${day ? ` (${day})` : ""}…`;
-    status.className = "status-text";
+    setDownloadProgress({
+      pct: Math.round((i / files.length) * 100),
+      label: `Uploading ${kind} ${i + 1} of ${files.length}`,
+      detail: `${file.name}${day ? ` (${day})` : ""}`,
+    });
     try {
       if (!day) throw new Error("no date — use Upload date or a path like 2026-05-11/file.parquet");
       await uploadOneFile(kind, file, day);
@@ -409,9 +501,11 @@ async function uploadFiles(kind, fileList, inputEl) {
   if (errors.length) {
     status.textContent = `Uploaded ${ok}/${files.length} ${kind} file(s). Errors: ${errors.slice(0, 2).join(" · ")}${errors.length > 2 ? "…" : ""}`;
     status.className = ok ? "status-text" : "status-text err";
+    setDownloadProgress({ pct: 100, label: "Upload finished with errors", detail: errors.slice(0, 2).join(" · ") });
   } else {
     status.textContent = `Uploaded ${ok} ${kind} file(s)${ok === 1 ? "" : " — check cache lists below"}`;
     status.className = "status-text ok";
+    setDownloadProgress({ pct: 100, label: "Upload complete", detail: `${ok} ${kind} file(s)` });
   }
   if (inputEl) inputEl.value = "";
 }

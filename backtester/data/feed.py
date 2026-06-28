@@ -81,6 +81,33 @@ def download_options_day(day: str, interval: str, strikes: int, force: bool = Fa
     return meta
 
 
+def download_day(day: str, interval: str, strikes: int, force: bool = False) -> dict:
+    """Download spot + options for a single trading day."""
+    spot_result: dict | None = None
+    options_result: dict | None = None
+    spot_error: str | None = None
+    options_error: str | None = None
+
+    try:
+        spot_result = download_spot_day(day, interval, force=force)
+    except Exception as exc:
+        spot_error = str(exc)
+
+    try:
+        options_result = download_options_day(day, interval, strikes, force=force)
+    except Exception as exc:
+        options_error = str(exc)
+
+    return {
+        "date": day,
+        "spot": spot_result,
+        "options": options_result,
+        "spot_error": spot_error,
+        "options_error": options_error,
+        "ok": spot_error is None and options_error is None,
+    }
+
+
 def download(
     symbol: str = "NIFTY",
     start: str | None = None,
@@ -99,14 +126,15 @@ def download(
     errors: list[str] = []
 
     for day in days:
-        try:
-            spot_results.append(download_spot_day(day, interval, force=force))
-        except Exception as exc:
-            errors.append(f"Spot {day}: {exc}")
-        try:
-            options_results.append(download_options_day(day, interval, strikes_around_atm, force=force))
-        except Exception as exc:
-            errors.append(f"Options {day}: {exc}")
+        result = download_day(day, interval, strikes_around_atm, force=force)
+        if result.get("spot"):
+            spot_results.append(result["spot"])
+        if result.get("spot_error"):
+            errors.append(f"Spot {day}: {result['spot_error']}")
+        if result.get("options"):
+            options_results.append(result["options"])
+        if result.get("options_error"):
+            errors.append(f"Options {day}: {result['options_error']}")
 
     if errors:
         raise ValueError("Download failed:\n" + "\n".join(errors))

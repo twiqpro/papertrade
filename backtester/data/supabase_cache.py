@@ -92,6 +92,10 @@ def upload_json(key: str, obj: dict) -> None:
     upload_bytes(key, json.dumps(obj, indent=2).encode())
 
 
+def _bytes_look_like_parquet(data: bytes) -> bool:
+    return len(data) >= 8 and data[:4] == b"PAR1" and data[-4:] == b"PAR1"
+
+
 def download_bytes(key: str) -> bytes | None:
     if not enabled():
         return None
@@ -171,7 +175,7 @@ def push_options(day: str, interval: str, strikes: int, meta: dict, parquet_path
 
 def hydrate_spot(day: str, interval: str, spot_path, meta_path) -> bool:
     data = download_bytes(spot_parquet_key(day, interval))
-    if data is None:
+    if data is None or not _bytes_look_like_parquet(data):
         return False
     spot_path.parent.mkdir(parents=True, exist_ok=True)
     spot_path.write_bytes(data)
@@ -183,7 +187,7 @@ def hydrate_spot(day: str, interval: str, spot_path, meta_path) -> bool:
 
 def hydrate_options(day: str, interval: str, strikes: int, options_path, meta_path) -> bool:
     data = download_bytes(options_parquet_key(day, interval, strikes))
-    if data is None:
+    if data is None or not _bytes_look_like_parquet(data):
         return False
     options_path.parent.mkdir(parents=True, exist_ok=True)
     options_path.write_bytes(data)

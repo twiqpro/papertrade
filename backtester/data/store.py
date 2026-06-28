@@ -93,12 +93,61 @@ def options_cache_valid(day: str, interval: str, strikes: int) -> bool:
     return bool(meta and meta.get("source") in ("dhan", "upload"))
 
 
+def _parquet_ok(path: Path) -> bool:
+    try:
+        if not path.is_file():
+            return False
+        size = path.stat().st_size
+        if size < 8:
+            return False
+        with path.open("rb") as fh:
+            if fh.read(4) != b"PAR1":
+                return False
+            fh.seek(-4, 2)
+            return fh.read(4) == b"PAR1"
+    except OSError:
+        return False
+
+
+def _write_parquet(df: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f"{path.suffix}.tmp")
+    try:
+        df.to_parquet(tmp, index=False)
+        pd.read_parquet(tmp)  # verify readable before commit
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _read_parquet(path: Path, *, kind: str, day: str) -> pd.DataFrame:
+    if not path.exists():
+        raise FileNotFoundError(f"No {kind} data for {day} ({path.name})")
+    if not _parquet_ok(path):
+        raise ValueError(
+            f"Corrupt {kind} cache for {day} ({path.name}). "
+            "Click Force refresh for that range, or re-upload the file."
+        )
+    try:
+        return pd.read_parquet(path)
+    except Exception as exc:
+        msg = str(exc)
+        if "thrift" in msg.lower() or "parquet" in msg.lower():
+            raise ValueError(
+                f"Corrupt {kind} cache for {day} ({path.name}). "
+                "Click Force refresh for that range, or re-upload the file."
+            ) from exc
+        raise
+
+
 def spot_exists(day: str, interval: str) -> bool:
-    return _spot_path(day, interval).exists()
+    path = _spot_path(day, interval)
+    return path.exists() and _parquet_ok(path)
 
 
 def options_exists(day: str, interval: str, strikes: int) -> bool:
-    return _options_path(day, interval, strikes).exists()
+    path = _options_path(day, interval, strikes)
+    return path.exists() and _parquet_ok(path)
 
 
 def _hydrate_spot_from_cloud(day: str, interval: str) -> None:
@@ -126,9 +175,7 @@ def _hydrate_options_from_cloud(day: str, interval: str, strikes: int) -> None:
 def save_spot(day: str, interval: str, df: pd.DataFrame, source: str = "yahoo") -> dict:
     _ensure_dirs()
     out = _normalize_spot(df)
-    folder = SPOT_DIR / day
-    folder.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(_spot_path(day, interval), index=False)
+    _write_parquet(out, _spot_path(day, interval))
     meta = {
         "type": "spot",
         "date": day,
@@ -151,9 +198,7 @@ def save_spot(day: str, interval: str, df: pd.DataFrame, source: str = "yahoo") 
 def save_options(day: str, interval: str, strikes: int, df: pd.DataFrame, source: str = "dhan") -> dict:
     _ensure_dirs()
     out = _normalize_options(df)
-    folder = OPTIONS_DIR / day
-    folder.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(_options_path(day, interval, strikes), index=False)
+    _write_parquet(out, _options_path(day, interval, strikes))
     meta = {
         "type": "options",
         "date": day,
@@ -178,18 +223,14 @@ def load_spot_day(day: str, interval: str) -> pd.DataFrame:
     path = _spot_path(day, interval)
     if not path.exists():
         _hydrate_spot_from_cloud(day, interval)
-    if not path.exists():
-        raise FileNotFoundError(f"No spot data for {day} ({interval})")
-    return _normalize_spot(pd.read_parquet(path))
+    return _normalize_spot(_read_parquet(path, kind="spot", day=day))
 
 
 def load_options_day(day: str, interval: str, strikes: int) -> pd.DataFrame:
     path = _options_path(day, interval, strikes)
     if not path.exists():
         _hydrate_options_from_cloud(day, interval, strikes)
-    if not path.exists():
-        raise FileNotFoundError(f"No options data for {day} ({interval}, ±{strikes})")
-    return _normalize_options(pd.read_parquet(path))
+    return _normalize_options(_read_parquet(path, kind="options", day=day))
 
 
 def list_spot() -> list[dict]:
@@ -200,9 +241,15 @@ def list_spot() -> list[dict]:
             continue
         meta_file = day_dir / "meta.json"
         if meta_file.exists():
-            items.append(json.loads(meta_file.read_text()))
+            meta = json.loads(meta_file.read_text())
+            interval = meta.get("interval", "1min")
+            if not _parquet_ok(_spot_path(day_dir.name, interval)):
+                continue
+            items.append(meta)
         else:
             for pq in day_dir.glob("*.parquet"):
+                if not _parquet_ok(pq):
+                    continue
                 items.append({
                     "type": "spot",
                     "date": day_dir.name,
@@ -222,9 +269,16 @@ def list_options() -> list[dict]:
             continue
         meta_file = day_dir / "meta.json"
         if meta_file.exists():
-            items.append(json.loads(meta_file.read_text()))
+            meta = json.loads(meta_file.read_text())
+            interval = meta.get("interval", "1min")
+            strikes = int(meta.get("strikes_around_atm", 10))
+            if not _parquet_ok(_options_path(day_dir.name, interval, strikes)):
+                continue
+            items.append(meta)
         else:
             for pq in day_dir.glob("*.parquet"):
+                if not _parquet_ok(pq):
+                    continue
                 stem = pq.stem  # e.g. 5min_atm10
                 items.append({
                     "type": "options",

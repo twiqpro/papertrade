@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TIMEOUT_SEC = 60
+TIMEOUT_SEC = 300
 
 
 def run_strategy(

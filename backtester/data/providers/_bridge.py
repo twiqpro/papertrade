@@ -10,8 +10,23 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BACKEND_APP = REPO_ROOT / "backend" / "app"
 _PKG = "twiq_app"
+
+
+def _resolve_backend_app() -> Path:
+    """Local dev: repo/backend/app · Docker: /app/app (backend copied without backend/ prefix)."""
+    candidates = [
+        REPO_ROOT / "backend" / "app",
+        REPO_ROOT / "app",
+    ]
+    for path in candidates:
+        if (path / "config.py").exists():
+            return path
+    tried = ", ".join(str(p) for p in candidates)
+    raise ImportError(f"Twiq backend app not found (tried: {tried})")
+
+
+BACKEND_APP = _resolve_backend_app()
 
 load_dotenv(REPO_ROOT / ".env", override=True)
 load_dotenv(REPO_ROOT / "backend" / ".env", override=True)

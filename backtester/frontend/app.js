@@ -346,39 +346,74 @@ async function downloadData(force = false) {
   }
 }
 
-async function uploadFile(kind, file, inputEl) {
-  const status = $("#download-status");
-  const uploadDate = $("#upload-date")?.value;
-  const day = uploadDate || $("#start-date").value;
+async function uploadOneFile(kind, file, dayOverride) {
   const form = new FormData();
   form.append("kind", kind);
-  if (day) form.append("date", day);
+  if (dayOverride) form.append("date", dayOverride);
   form.append("interval", $("#interval").value);
   form.append("strikes_around_atm", $("#strikes").value);
   form.append("file", file);
 
-  status.textContent = `Uploading ${kind}…`;
-  status.className = "status-text";
-  try {
-    const res = await fetch(apiUrl("/api/upload"), { method: "POST", body: form });
-    const { ok, data } = await parseApiResponse(res);
-    if (!ok) throw new Error(data.detail || "Upload failed");
-    const targetDay = data.date || day;
-    status.textContent = `Uploaded ${kind} for ${targetDay} (${data.rows} rows)${data.storage === "supabase" ? " · synced to cloud" : ""}`;
-    status.className = "status-text ok";
-    if (targetDay) {
-      if (kind === "spot") selectedSpotDates.add(targetDay);
-      else selectedOptionsDates.add(targetDay);
-      if ($("#upload-date") && !$("#upload-date").value) $("#upload-date").value = targetDay;
-    }
-    persistSelection();
-    await loadInventory();
-  } catch (err) {
-    status.textContent = err.message;
-    status.className = "status-text err";
-  } finally {
-    if (inputEl) inputEl.value = "";
+  const res = await fetch(apiUrl("/api/upload"), { method: "POST", body: form });
+  const { ok, data } = await parseApiResponse(res);
+  if (!ok) throw new Error(data.detail || "Upload failed");
+  const targetDay = data.date || dayOverride;
+  if (targetDay) {
+    if (kind === "spot") selectedSpotDates.add(targetDay);
+    else selectedOptionsDates.add(targetDay);
   }
+  return { targetDay, rows: data.rows, storage: data.storage };
+}
+
+function inferDayFromFile(file) {
+  const path = file.webkitRelativePath || file.name || "";
+  const m = path.match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+function dataFilesFromInput(fileList) {
+  return Array.from(fileList || []).filter((f) => /\.(csv|parquet)$/i.test(f.name));
+}
+
+async function uploadFiles(kind, fileList, inputEl) {
+  const status = $("#download-status");
+  const files = dataFilesFromInput(fileList);
+  if (!files.length) {
+    status.textContent = "No .csv or .parquet files selected";
+    status.className = "status-text err";
+    if (inputEl) inputEl.value = "";
+    return;
+  }
+
+  const fixedDay = $("#upload-date")?.value || (files.length === 1 ? $("#start-date").value : "");
+  let ok = 0;
+  const errors = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const day = fixedDay || inferDayFromFile(file);
+    status.textContent = `Uploading ${kind} ${i + 1}/${files.length}: ${file.name}${day ? ` (${day})` : ""}…`;
+    status.className = "status-text";
+    try {
+      if (!day) throw new Error("no date — use Upload date or a path like 2026-05-11/file.parquet");
+      await uploadOneFile(kind, file, day);
+      ok++;
+    } catch (err) {
+      errors.push(`${file.name}: ${err.message}`);
+    }
+  }
+
+  persistSelection();
+  await loadInventory();
+
+  if (errors.length) {
+    status.textContent = `Uploaded ${ok}/${files.length} ${kind} file(s). Errors: ${errors.slice(0, 2).join(" · ")}${errors.length > 2 ? "…" : ""}`;
+    status.className = ok ? "status-text" : "status-text err";
+  } else {
+    status.textContent = `Uploaded ${ok} ${kind} file(s)${ok === 1 ? "" : " — check cache lists below"}`;
+    status.className = "status-text ok";
+  }
+  if (inputEl) inputEl.value = "";
 }
 
 function decisionClass(decision) {
@@ -562,14 +597,15 @@ function readStrategyFile(file) {
 }
 
 function setupUploads() {
-  $("#upload-spot").addEventListener("change", (e) => {
-    const file = e.target.files?.[0];
-    if (file) uploadFile("spot", file, e.target);
-  });
-  $("#upload-options").addEventListener("change", (e) => {
-    const file = e.target.files?.[0];
-    if (file) uploadFile("options", file, e.target);
-  });
+  const bind = (id, kind) => {
+    $(id)?.addEventListener("change", (e) => {
+      if (e.target.files?.length) uploadFiles(kind, e.target.files, e.target);
+    });
+  };
+  bind("#upload-spot", "spot");
+  bind("#upload-options", "options");
+  bind("#upload-spot-folder", "spot");
+  bind("#upload-options-folder", "options");
 }
 
 async function loadExample() {

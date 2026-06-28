@@ -38,8 +38,12 @@
           <strong>NIFTY spot</strong>
           <span class="source-detail">OHLC bars + ATM implied volatility</span>
           <label class="upload-btn">
-            Upload spot CSV/parquet
-            <input type="file" id="upload-spot" accept=".csv,.parquet" hidden />
+            Upload spot files
+            <input type="file" id="upload-spot" accept=".csv,.parquet" multiple hidden />
+          </label>
+          <label class="upload-btn upload-btn-secondary">
+            Upload spot folder
+            <input type="file" id="upload-spot-folder" accept=".csv,.parquet" webkitdirectory hidden />
           </label>
         </div>
         <div class="source-plus" aria-hidden="true">+</div>
@@ -48,8 +52,12 @@
           <strong>Options CE / PE</strong>
           <span class="source-detail">ATM ±N strikes · premium, OI, volume</span>
           <label class="upload-btn">
-            Upload options CSV/parquet
-            <input type="file" id="upload-options" accept=".csv,.parquet" hidden />
+            Upload options files
+            <input type="file" id="upload-options" accept=".csv,.parquet" multiple hidden />
+          </label>
+          <label class="upload-btn upload-btn-secondary">
+            Upload options folder
+            <input type="file" id="upload-options-folder" accept=".csv,.parquet" webkitdirectory hidden />
           </label>
         </div>
       </div>
@@ -91,7 +99,7 @@
               <option value="18">±18</option>
             </select>
           </label>
-          <span class="strikes-hint">Same dates &amp; interval for both · strike step 50 · skips already cached days</span>
+          <span class="strikes-hint">Upload many files or a whole folder (date from path like 2026-05-11/) · interval &amp; strikes must match files</span>
           <span id="download-status" class="status-text" aria-live="polite"></span>
           <span id="cloud-cache-note" class="strikes-hint muted" hidden></span>
         </div>

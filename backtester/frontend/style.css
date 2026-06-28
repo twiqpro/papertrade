@@ -173,6 +173,12 @@ main {
   color: var(--primary-hover);
 }
 
+.upload-btn-secondary {
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
 .cache-toolbar {
   margin-top: 1rem;
   padding-top: 0.85rem;

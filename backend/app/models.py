@@ -19,18 +19,18 @@ class StrategySettings(BaseModel):
     capital_budget: float = Field(100000, ge=0)
     daily_risk: float = Field(100000, ge=0)
     per_trade_risk_cap: float = Field(100000, ge=0)
-    use_full_capital: bool = False
+    use_full_capital: bool = True
     lots_per_trade: int = Field(1, ge=1)
-    target_rupees: float = Field(2, gt=0)
-    stop_loss_rupees: float = Field(10, gt=0)
-    ema_gap_min_points: float = Field(3, ge=0)
+    target_rupees: float = Field(5, gt=0)
+    stop_loss_rupees: float = Field(20, gt=0)
+    ema_gap_min_points: float = Field(6, ge=0)
     min_candle_body_ratio: float = Field(0.5, ge=0, le=1)
     max_trades_per_day: int = Field(9999, ge=1)
-    max_consecutive_losses: int = Field(2, ge=1)
-    timeframe: Timeframe = "5m"
-    trade_start: str = "09:30"
-    trade_end: str = "14:30"
-    square_off_time: str = "15:15"
+    max_consecutive_losses: int = Field(9999, ge=1)
+    timeframe: Timeframe = "1m"
+    trade_start: str = "09:15"
+    trade_end: str = "15:00"
+    square_off_time: str = "15:20"
     ema_fast: int = Field(9, ge=2)
     ema_slow: int = Field(20, ge=3)
     macd_fast: int = Field(12, ge=2)
@@ -45,16 +45,16 @@ class StrategySettings(BaseModel):
     target_pct_enabled: bool = True
     trail_trigger_pct: float = Field(0.25, ge=0)
     trail_gap_pct: float = Field(0.15, ge=0)
-    use_signal_exit: bool = True
+    use_signal_exit: bool = False
     time_stop_candles: int = Field(2, ge=1)
-    reentry_cooldown_candles: int = Field(1, ge=0)
+    reentry_cooldown_candles: int = Field(15, ge=0)
     fill_slippage_rupees: float = Field(0, ge=0)
     exit_slippage_rupees: float = Field(0, ge=0)
     brokerage_per_lot_round_trip: float = Field(40, ge=0)
     max_bid_ask_spread: float = Field(1.5, ge=0)
     spread_filter_enabled: bool = True
     vix_filter_enabled: bool = True
-    cooldown_enabled: bool = False
+    cooldown_enabled: bool = True
     chain_staleness_seconds: int = Field(75, ge=1)
     replay_mode: ReplayMode = "full_context"
     option_chain_window: int = Field(10, ge=1)

@@ -5,4 +5,6 @@ set -euo pipefail
 cat > frontend/config.js <<EOF
 window.TWIQ_API_BASE_URL = "${TWIQ_API_BASE_URL:-https://papertrade-absj.onrender.com}";
 window.TWIQ_API_KEY = "${TWIQ_API_KEY:-}";
+window.TWIQ_BACKTESTER_BASE = "${TWIQ_BACKTESTER_BASE:-/options-backtest}";
+window.TWIQ_PAPER_BASE = "${TWIQ_PAPER_BASE:-}";
 EOF

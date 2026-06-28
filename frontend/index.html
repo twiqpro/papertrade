@@ -14,95 +14,7 @@
   </head>
   <body>
     <div class="app-shell" id="appShell">
-      <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-          <div class="brand">
-            <div class="brand-mark">N</div>
-            <div class="brand-copy">
-              <h1>NIFTY Options</h1>
-              <p>Paper trading</p>
-            </div>
-          </div>
-          <button
-            id="sidebarToggle"
-            class="sidebar-toggle"
-            type="button"
-            aria-label="Collapse sidebar"
-            aria-expanded="true"
-            title="Collapse sidebar"
-          >
-            ‹
-          </button>
-        </div>
-
-        <nav class="nav" aria-label="Primary">
-          <a href="#overview" class="active" title="Overview">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-                <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-                <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-                <rect x="14" y="14" width="7" height="7" rx="1"></rect>
-              </svg>
-            </span>
-            <span class="nav-label">Overview</span>
-          </a>
-          <a href="#strategy" title="Strategy">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="4" y1="21" x2="4" y2="14"></line>
-                <line x1="4" y1="10" x2="4" y2="3"></line>
-                <line x1="12" y1="21" x2="12" y2="12"></line>
-                <line x1="12" y1="8" x2="12" y2="3"></line>
-                <line x1="20" y1="21" x2="20" y2="16"></line>
-                <line x1="20" y1="12" x2="20" y2="3"></line>
-                <line x1="1" y1="14" x2="7" y2="14"></line>
-                <line x1="9" y1="8" x2="15" y2="8"></line>
-                <line x1="17" y1="16" x2="23" y2="16"></line>
-              </svg>
-            </span>
-            <span class="nav-label">Strategy</span>
-          </a>
-          <a href="#trades" title="Trades">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
-                <polyline points="16 7 22 7 22 13"></polyline>
-              </svg>
-            </span>
-            <span class="nav-label">Trades</span>
-          </a>
-          <a href="#signals" title="Signals">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="8" y1="6" x2="21" y2="6"></line>
-                <line x1="8" y1="12" x2="21" y2="12"></line>
-                <line x1="8" y1="18" x2="21" y2="18"></line>
-                <line x1="3" y1="6" x2="3.01" y2="6"></line>
-                <line x1="3" y1="12" x2="3.01" y2="12"></line>
-                <line x1="3" y1="18" x2="3.01" y2="18"></line>
-              </svg>
-            </span>
-            <span class="nav-label">Signals</span>
-          </a>
-          <a href="./backtester.html" title="Backtester">
-            <span class="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-              </svg>
-            </span>
-            <span class="nav-label">Backtester</span>
-          </a>
-        </nav>
-
-        <section class="session-panel">
-          <div class="session-state">
-            <span class="status-dot"></span>
-            <span id="sessionLabel">Paper running</span>
-          </div>
-          <button id="toggleSession" class="button primary session-btn" type="button">Pause</button>
-        </section>
-      </aside>
+      <div id="sidebar-root"></div>
 
       <div class="workspace">
       <main>
@@ -122,7 +34,7 @@
           <p id="haltBanner" class="halt-banner" style="display:none; grid-column: 1 / -1;"></p>
           <article class="metric">
             <span>Capital</span>
-            <strong id="capitalMetric">Rs 50,000</strong>
+            <strong id="capitalMetric">Rs 1,00,000</strong>
             <small id="lotMetric">1 lot affordable</small>
           </article>
           <article class="metric">
@@ -163,15 +75,15 @@
               </label>
               <label>
                 <span>Target</span>
-                <input id="targetInput" type="number" min="0.5" step="0.5" value="2" />
+                <input id="targetInput" type="number" min="0.5" step="0.5" value="5" />
               </label>
               <label>
                 <span>Stop loss</span>
-                <input id="stopInput" type="number" min="0.5" step="0.5" value="5" />
+                <input id="stopInput" type="number" min="0.5" step="0.5" value="20" />
               </label>
               <label>
                 <span>EMA minimum gap</span>
-                <input id="emaGapInput" type="number" min="0" step="0.5" value="3" />
+                <input id="emaGapInput" type="number" min="0" step="0.5" value="6" />
               </label>
               <label>
                 <span>Max trades</span>
@@ -180,11 +92,11 @@
             </div>
 
             <div class="segmented" aria-label="Candle timeframe">
-              <input id="tf1" type="radio" name="timeframe" value="1m" />
+              <input id="tf1" type="radio" name="timeframe" value="1m" checked />
               <label for="tf1">1m</label>
               <input id="tf3" type="radio" name="timeframe" value="3m" />
               <label for="tf3">3m</label>
-              <input id="tf5" type="radio" name="timeframe" value="5m" checked />
+              <input id="tf5" type="radio" name="timeframe" value="5m" />
               <label for="tf5">5m</label>
             </div>
           </form>
@@ -325,6 +237,8 @@
         );
       }
     </script>
+    <script src="./sidebar.js"></script>
+    <script>initSidebar({ active: "overview", showSession: true });</script>
     <script src="./app.js"></script>
   </body>
 </html>

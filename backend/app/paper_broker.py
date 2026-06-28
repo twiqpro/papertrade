@@ -71,8 +71,8 @@ def estimate_brokerage(lots: int) -> float:
 
 
 def _premium_exit_levels(entry_price: float, settings: StrategySettings) -> tuple[float, float]:
-    stop_price = max(0.05, entry_price * (1.0 - settings.sl_pct))
-    target_price = entry_price * (1.0 + settings.target_pct) if settings.target_pct_enabled else entry_price * 10
+    target_price = entry_price + settings.target_rupees
+    stop_price = max(0.05, entry_price - settings.stop_loss_rupees)
     return target_price, stop_price
 
 
@@ -173,25 +173,30 @@ class PaperBroker:
         if not can:
             return None
 
-        quote = context.atm_ce if signal.side == "CE" else context.atm_pe
+        quote = quote_for_strike(context, signal.strike, signal.side)
+        entry_ltp = signal.option_ltp if signal.option_ltp is not None else quote.ltp
         if settings.use_full_capital:
-            lots = capital_lots(settings, quote.ltp)
+            effective_capital = settings.capital_budget
+            if self.day is not None:
+                effective_capital = max(0.0, settings.capital_budget + self.day.realized_pnl)
+            sizing_settings = settings.model_copy(update={"capital_budget": effective_capital})
+            lots = capital_lots(sizing_settings, entry_ltp)
         else:
             lots = settings.lots_per_trade
         if lots < 1:
             return None
 
         entry_slip = spread_aware_slippage(quote.bid, quote.ask, settings.fill_slippage_rupees)
-        entry_price = quote.ltp + entry_slip
+        entry_price = entry_ltp + entry_slip
         target_price, base_stop_price = _premium_exit_levels(entry_price, settings)
         quantity = lots * LOT_SIZE
-        contract = f"NIFTY {context.atm_strike} {signal.side}"
+        contract = f"NIFTY {signal.strike} {signal.side}"
 
         position = OpenPosition(
             id=str(uuid4()),
             contract=contract,
             side=signal.side,
-            strike=context.atm_strike,
+            strike=signal.strike,
             quantity=quantity,
             lots=lots,
             entry_price=entry_price,
@@ -200,12 +205,12 @@ class PaperBroker:
             entry_time=now,
             expiry=context.expiry,
             time_stop_at=self._time_stop_at(now, settings, context.expiry),
-            regime_at_entry="ema_macd_cross",
+            regime_at_entry="ema_atm_limit_forward",
             base_stop_price=base_stop_price,
             peak_ltp=entry_price,
             trail_armed=False,
             trail_stop_price=None,
-            trail_enabled=True,
+            trail_enabled=False,
         )
         self.open_position = position
         self._last_entry_signal_id = signal.id
@@ -262,17 +267,16 @@ class PaperBroker:
         if ltp <= 0:
             return None
 
-        self._update_premium_trail(position, ltp, settings)
         entry = position.entry_price
 
         if is_square_off_time(now, settings) or is_market_close(now):
             return self._close_position(now, settings, context, "Time Exit", ltp)
 
-        if ltp <= entry * (1.0 - settings.sl_pct):
-            return self._close_position(now, settings, context, "Stop", ltp)
+        if ltp <= position.base_stop_price:
+            return self._close_position(now, settings, context, "Stop", position.base_stop_price)
 
-        if settings.target_pct_enabled and ltp >= entry * (1.0 + settings.target_pct):
-            return self._close_position(now, settings, context, "Target", ltp)
+        if ltp >= position.target_price:
+            return self._close_position(now, settings, context, "Target", position.target_price)
 
         if (
             position.trail_armed

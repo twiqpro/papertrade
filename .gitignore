@@ -18,4 +18,8 @@ dist/
 build/
 *.sqlite
 *.db
-data/
+/data/
+backtester/data/data_cache/
+backtester/data/cache_meta/
+backtester/data/spot/
+backtester/data/options/

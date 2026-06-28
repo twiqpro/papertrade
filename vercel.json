@@ -1,4 +1,14 @@
 {
   "outputDirectory": "frontend",
-  "buildCommand": "bash scripts/vercel-build.sh"
+  "buildCommand": "bash scripts/vercel-build.sh",
+  "rewrites": [
+    {
+      "source": "/options-backtest",
+      "destination": "https://papertrade-absj.onrender.com/options-backtest"
+    },
+    {
+      "source": "/options-backtest/:path*",
+      "destination": "https://papertrade-absj.onrender.com/options-backtest/:path*"
+    }
+  ]
 }

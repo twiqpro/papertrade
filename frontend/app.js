@@ -25,12 +25,12 @@ const fallbackPayload = {
   settings: {
     capital_budget: 100000,
     daily_risk: 100000,
-    target_rupees: 2,
-    stop_loss_rupees: 10,
-    ema_gap_min_points: 3,
+    target_rupees: 5,
+    stop_loss_rupees: 20,
+    ema_gap_min_points: 6,
     max_trades_per_day: 9999,
-    max_consecutive_losses: 2,
-    timeframe: "5m",
+    max_consecutive_losses: 9999,
+    timeframe: "1m",
     fill_slippage_rupees: 0
   },
   state: {
@@ -445,11 +445,17 @@ function setViewMode(mode) {
   }
 }
 
+function sectionIdFromNavHref(href) {
+  if (!href) return null;
+  const hash = href.includes("#") ? href.split("#").pop() : href.replace(/^\//, "");
+  return hash || null;
+}
+
 function initNavScrollSpy() {
   const links = Array.from(document.querySelectorAll(".nav a"));
   const sections = links
     .map((link) => {
-      const id = link.getAttribute("href")?.slice(1);
+      const id = sectionIdFromNavHref(link.getAttribute("href"));
       const section = id ? document.getElementById(id) : null;
       return section ? { link, section } : null;
     })
@@ -465,7 +471,7 @@ function initNavScrollSpy() {
 
   for (const { link } of sections) {
     link.addEventListener("click", (event) => {
-      const id = link.getAttribute("href")?.slice(1);
+      const id = sectionIdFromNavHref(link.getAttribute("href"));
       if (id) setActive(id);
     });
   }
@@ -481,27 +487,6 @@ function initNavScrollSpy() {
   );
 
   for (const { section } of sections) observer.observe(section);
-}
-
-function initSidebarCollapse() {
-  const shell = byId("appShell");
-  const toggle = byId("sidebarToggle");
-  if (!shell || !toggle) return;
-
-  const applyCollapsed = (collapsed) => {
-    shell.classList.toggle("is-sidebar-collapsed", collapsed);
-    toggle.setAttribute("aria-expanded", String(!collapsed));
-    toggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
-    toggle.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
-    toggle.textContent = collapsed ? "›" : "‹";
-  };
-
-  applyCollapsed(localStorage.getItem("twiq-sidebar-collapsed") === "1");
-  toggle.addEventListener("click", () => {
-    const collapsed = !shell.classList.contains("is-sidebar-collapsed");
-    applyCollapsed(collapsed);
-    localStorage.setItem("twiq-sidebar-collapsed", collapsed ? "1" : "0");
-  });
 }
 
 function wireEvents() {
@@ -564,7 +549,6 @@ function wireEvents() {
 }
 
 wireEvents();
-initSidebarCollapse();
 initNavScrollSpy();
 refreshDashboard({ syncSettings: true });
 setInterval(() => {

@@ -1,11 +1,313 @@
+const STORAGE_KEY = "twiq_backtest_config";
+
 let currentMapping = {};
 let selectedRunId = null;
 let activeJobId = null;
 let activeJobTargetId = null;
 let wizardStep = 1;
 let dataSource = null;
+let replayMode = "full_context";
 let dataInventory = { ready_days: [] };
 let selectedReadyDays = new Set();
+let _dateSyncLock = false;
+let _buttonLoadingState = new Map();
+
+const ADVANCED_DEFAULTS = {
+  tradeStart: "09:30",
+  candleBodyRatio: "0.5",
+  maxTradesPerDay: "5",
+  maxConsecutiveLosses: "2",
+  pcrFilterEnabled: true,
+  vixFilterEnabled: true,
+  spreadFilterEnabled: true,
+  maxIndiaVix: "22",
+  pcrCeBlock: "0.7",
+  pcrPeBlock: "1.3",
+  reversalEnabled: false,
+  trailEnabled: false,
+  cooldownEnabled: false,
+  dynamicExitsEnabled: false,
+};
+
+function showToast(message, type = "info") {
+  const container = byId("toastContainer");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = `toast${type === "error" ? " toast--error" : type === "success" ? " toast--success" : ""}`;
+  if (type === "error") toast.setAttribute("role", "alert");
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+function showError(message) {
+  showToast(message, "error");
+}
+
+function setButtonLoading(btn, loading, labelWhileLoading = "Loading…") {
+  if (!btn) return;
+  if (loading) {
+    if (!_buttonLoadingState.has(btn)) {
+      _buttonLoadingState.set(btn, { html: btn.innerHTML, disabled: btn.disabled });
+    }
+    btn.disabled = true;
+    btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span> ${labelWhileLoading}`;
+  } else {
+    const prev = _buttonLoadingState.get(btn);
+    if (prev) {
+      btn.innerHTML = prev.html;
+      btn.disabled = prev.disabled;
+      _buttonLoadingState.delete(btn);
+    }
+  }
+}
+
+function updatePageTitle(sectionId) {
+  const titles = {
+    "data-manager": "Load Data",
+    "strategy-lab": "Run Strategy",
+    results: "Results",
+    replay: "Replay Log",
+  };
+  const label = titles[sectionId] || "Backtester";
+  document.title = `${label} — Twiq Backtester`;
+  document.querySelectorAll("#phaseBreadcrumb [data-phase]").forEach((el) => {
+    el.classList.toggle("phase-active", el.dataset.phase === sectionId);
+  });
+}
+
+function initSectionNav() {
+  const sections = document.querySelectorAll(".workspace-pane");
+  const navLinks = document.querySelectorAll('.nav a[href^="#"]');
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((e) => e.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      const id = visible.target.id;
+      navLinks.forEach((link) => {
+        link.classList.toggle("active", link.getAttribute("href") === `#${id}`);
+      });
+      updatePageTitle(id);
+    },
+    { threshold: 0.25, rootMargin: "-10% 0px -55% 0px" }
+  );
+  sections.forEach((section) => observer.observe(section));
+  if (navLinks.length) navLinks[0].classList.add("active");
+}
+
+function initAnchorScroll() {
+  document.querySelectorAll('.nav a[href^="#"]').forEach((link) => {
+    link.addEventListener("click", (e) => {
+      const id = link.getAttribute("href")?.slice(1);
+      const target = id ? byId(id) : null;
+      if (!target) return;
+      e.preventDefault();
+      target.classList.add("section-highlight");
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => target.classList.remove("section-highlight"), 1200);
+      history.replaceState(null, "", `#${id}`);
+    });
+  });
+}
+
+function syncDateFields(changedId) {
+  if (_dateSyncLock) return;
+  _dateSyncLock = true;
+  const covFrom = byId("covFrom");
+  const covTo = byId("covTo");
+  const runFrom = byId("runFrom");
+  const runTo = byId("runTo");
+  if (changedId === "covFrom" && covFrom?.value) {
+    if (runFrom) runFrom.value = covFrom.value;
+  } else if (changedId === "covTo" && covTo?.value) {
+    if (runTo) runTo.value = covTo.value;
+  } else if (changedId === "runFrom" && runFrom?.value) {
+    if (covFrom) covFrom.value = runFrom.value;
+  } else if (changedId === "runTo" && runTo?.value) {
+    if (covTo) covTo.value = runTo.value;
+  }
+  _dateSyncLock = false;
+  checkRunDateCoverage().catch(() => {});
+  saveState();
+}
+
+async function checkRunDateCoverage() {
+  const warning = byId("runDateWarning");
+  if (!warning) return;
+  const from = byId("runFrom")?.value;
+  const to = byId("runTo")?.value;
+  if (!from || !to) {
+    warning.classList.add("tw-hidden");
+    return;
+  }
+  try {
+    const coverage = await api(`/api/data/coverage?from_date=${from}&to_date=${to}`);
+    const summary = coverage.summary || {};
+    const ready = summary.backtest_ready_days || 0;
+    if (ready === 0) {
+      warning.textContent =
+        "Warning: No backtest-ready days in this range. Load NIFTY + options data first.";
+      warning.classList.remove("tw-hidden");
+    } else if (summary.backtest_ready_first && summary.backtest_ready_last) {
+      const outOfRange = from < summary.backtest_ready_first || to > summary.backtest_ready_last;
+      if (outOfRange) {
+        warning.textContent = `Warning: Verified data covers ${summary.backtest_ready_first} → ${summary.backtest_ready_last}. Your run range may include missing days.`;
+        warning.classList.remove("tw-hidden");
+      } else {
+        warning.classList.add("tw-hidden");
+      }
+    } else {
+      warning.classList.add("tw-hidden");
+    }
+  } catch {
+    warning.classList.add("tw-hidden");
+  }
+}
+
+function updateAdvancedBadge() {
+  const badge = byId("advancedBadge");
+  if (!badge) return;
+  let modified = 0;
+  if (byId("tradeStart")?.value !== ADVANCED_DEFAULTS.tradeStart) modified++;
+  if (byId("candleBodyRatio")?.value !== ADVANCED_DEFAULTS.candleBodyRatio) modified++;
+  if (byId("maxTradesPerDay")?.value !== ADVANCED_DEFAULTS.maxTradesPerDay) modified++;
+  if (byId("maxConsecutiveLosses")?.value !== ADVANCED_DEFAULTS.maxConsecutiveLosses) modified++;
+  if (!!byId("pcrFilterEnabled")?.checked !== ADVANCED_DEFAULTS.pcrFilterEnabled) modified++;
+  if (!!byId("vixFilterEnabled")?.checked !== ADVANCED_DEFAULTS.vixFilterEnabled) modified++;
+  if (!!byId("spreadFilterEnabled")?.checked !== ADVANCED_DEFAULTS.spreadFilterEnabled) modified++;
+  if (byId("maxIndiaVix")?.value !== ADVANCED_DEFAULTS.maxIndiaVix) modified++;
+  if (byId("pcrCeBlock")?.value !== ADVANCED_DEFAULTS.pcrCeBlock) modified++;
+  if (byId("pcrPeBlock")?.value !== ADVANCED_DEFAULTS.pcrPeBlock) modified++;
+  if (!!byId("reversalEnabled")?.checked !== ADVANCED_DEFAULTS.reversalEnabled) modified++;
+  if (!!byId("trailEnabled")?.checked !== ADVANCED_DEFAULTS.trailEnabled) modified++;
+  if (!!byId("cooldownEnabled")?.checked !== ADVANCED_DEFAULTS.cooldownEnabled) modified++;
+  if (!!byId("dynamicExitsEnabled")?.checked !== ADVANCED_DEFAULTS.dynamicExitsEnabled) modified++;
+  badge.textContent = modified > 0 ? `${modified} modified` : "";
+}
+
+function saveState() {
+  try {
+    const state = {
+      dataSource,
+      wizardStep,
+      strategyStep,
+      replayMode,
+      covFrom: byId("covFrom")?.value,
+      covTo: byId("covTo")?.value,
+      runFrom: byId("runFrom")?.value,
+      runTo: byId("runTo")?.value,
+      costPreset: byId("costPreset")?.value,
+      timeframe: byId("timeframe")?.value,
+      targetRupees: byId("targetRupees")?.value,
+      stopRupees: byId("stopRupees")?.value,
+      emaGap: byId("emaGap")?.value,
+      timeStopCandles: byId("timeStopCandles")?.value,
+      capitalBudget: byId("capitalBudget")?.value,
+      tradeStart: byId("tradeStart")?.value,
+      candleBodyRatio: byId("candleBodyRatio")?.value,
+      maxTradesPerDay: byId("maxTradesPerDay")?.value,
+      maxConsecutiveLosses: byId("maxConsecutiveLosses")?.value,
+      pcrFilterEnabled: byId("pcrFilterEnabled")?.checked,
+      vixFilterEnabled: byId("vixFilterEnabled")?.checked,
+      spreadFilterEnabled: byId("spreadFilterEnabled")?.checked,
+      maxIndiaVix: byId("maxIndiaVix")?.value,
+      pcrCeBlock: byId("pcrCeBlock")?.value,
+      pcrPeBlock: byId("pcrPeBlock")?.value,
+      reversalEnabled: byId("reversalEnabled")?.checked,
+      trailEnabled: byId("trailEnabled")?.checked,
+      cooldownEnabled: byId("cooldownEnabled")?.checked,
+      dynamicExitsEnabled: byId("dynamicExitsEnabled")?.checked,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function restoreState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (state.dataSource) selectSource(state.dataSource, false);
+    if (state.replayMode) selectMode(state.replayMode, false);
+    const fields = [
+      "covFrom", "covTo", "runFrom", "runTo", "costPreset", "timeframe",
+      "targetRupees", "stopRupees", "emaGap", "timeStopCandles", "capitalBudget",
+      "tradeStart", "candleBodyRatio", "maxTradesPerDay", "maxConsecutiveLosses",
+      "maxIndiaVix", "pcrCeBlock", "pcrPeBlock",
+    ];
+    for (const id of fields) {
+      if (state[id] != null && byId(id)) byId(id).value = state[id];
+    }
+    const checks = [
+      "pcrFilterEnabled", "vixFilterEnabled", "spreadFilterEnabled",
+      "reversalEnabled", "trailEnabled", "cooldownEnabled", "dynamicExitsEnabled",
+    ];
+    for (const id of checks) {
+      if (state[id] != null && byId(id)) byId(id).checked = state[id];
+    }
+    if (state.wizardStep) wizardStep = state.wizardStep;
+    if (state.strategyStep) strategyStep = state.strategyStep;
+    updateAdvancedBadge();
+  } catch {
+    /* ignore corrupt state */
+  }
+}
+
+function bindPersistence() {
+  const ids = [
+    "covFrom", "covTo", "runFrom", "runTo", "costPreset", "timeframe",
+    "targetRupees", "stopRupees", "emaGap", "timeStopCandles", "capitalBudget",
+    "tradeStart", "candleBodyRatio", "maxTradesPerDay", "maxConsecutiveLosses",
+    "maxIndiaVix", "pcrCeBlock", "pcrPeBlock",
+  ];
+  for (const id of ids) {
+    byId(id)?.addEventListener("change", () => {
+      syncDateFields(id);
+      updateAdvancedBadge();
+      saveState();
+    });
+    byId(id)?.addEventListener("input", () => {
+      if (["covFrom", "covTo", "runFrom", "runTo"].includes(id)) syncDateFields(id);
+      updateAdvancedBadge();
+      saveState();
+    });
+  }
+  document.querySelectorAll("#advancedDetails input").forEach((el) => {
+    el.addEventListener("change", () => {
+      updateAdvancedBadge();
+      saveState();
+    });
+  });
+}
+
+function populateReplayRunSelect(runs) {
+  const select = byId("replayRunSelect");
+  if (!select) return;
+  const current = select.value || selectedRunId || "";
+  select.innerHTML = '<option value="">— choose a run —</option>';
+  for (const run of runs) {
+    const opt = document.createElement("option");
+    opt.value = run.id;
+    opt.textContent = `${run.id.slice(0, 8)} · ${run.date_from} → ${run.date_to} · ${run.status}`;
+    select.appendChild(opt);
+  }
+  if (current && runs.some((r) => r.id === current)) select.value = current;
+}
+
+function viewRunLog(runId) {
+  selectedRunId = runId;
+  const hidden = byId("replayRunId");
+  const select = byId("replayRunSelect");
+  if (hidden) hidden.value = runId;
+  if (select) select.value = runId;
+  location.hash = "replay";
+  byId("replay")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadReplay().catch((e) => showError(e.message));
+}
 
 const WIZARD_STEPS = 4;
 
@@ -14,26 +316,47 @@ function setWizardStep(step) {
   for (let i = 1; i <= WIZARD_STEPS; i++) {
     const panel = byId(`wizard-panel-${i}`);
     const bar = byId(`bar-step-${i}`);
-    const label = document.querySelector(`[data-wizard-step="${i}"] p`);
+    const wrap = document.querySelector(`[data-wizard-step="${i}"]`);
+    const btn = wrap?.querySelector(".wizard-step-btn");
+    const label = wrap?.querySelector("p");
     if (panel) panel.classList.toggle("tw-hidden", i !== step);
     if (bar) {
-      bar.classList.toggle("tw-bg-slate-900", i <= step);
-      bar.classList.toggle("tw-bg-slate-200", i > step);
+      if (i < step) {
+        bar.classList.remove("tw-bg-slate-200", "tw-bg-slate-900");
+        bar.classList.add("tw-bg-emerald-700");
+      } else {
+        bar.classList.toggle("tw-bg-slate-900", i === step);
+        bar.classList.toggle("tw-bg-slate-200", i > step);
+        bar.classList.remove("tw-bg-emerald-700");
+      }
+    }
+    if (wrap) {
+      wrap.classList.toggle("wizard-step--completed", i < step);
+    }
+    if (btn) {
+      btn.disabled = i > step;
+      btn.setAttribute("aria-current", i === step ? "step" : "false");
     }
     if (label) {
       label.classList.toggle("tw-text-slate-900", i <= step);
-      label.classList.toggle("tw-text-slate-400", i > step);
+      label.classList.toggle("tw-text-slate-600", i > step);
     }
   }
   const backBtn = byId("wizardBack");
   const nextBtn = byId("wizardNext");
+  const hint = byId("wizardNextHint");
   if (backBtn) backBtn.classList.toggle("tw-invisible", step === 1);
   if (nextBtn) {
-    nextBtn.textContent = step === WIZARD_STEPS ? "Go to Strategy Lab →" : "Next →";
+    nextBtn.textContent = step === WIZARD_STEPS ? "Continue to Run Strategy →" : "Next →";
     if (step === 1) {
       nextBtn.disabled = !dataSource;
-    } else if (step !== WIZARD_STEPS) {
+      hint?.classList.toggle("tw-hidden", !!dataSource);
+    } else if (step === WIZARD_STEPS) {
+      updateWizardNextState();
+      if (hint) hint.classList.add("tw-hidden");
+    } else {
       nextBtn.disabled = false;
+      if (hint) hint.classList.add("tw-hidden");
     }
   }
   if (step === 2) {
@@ -51,18 +374,24 @@ function setWizardStep(step) {
     updateWizardNextState();
     loadDataInventory().catch(() => {});
   }
+  saveState();
+  updatePageTitle("data-manager");
 }
 
-function selectSource(source) {
+function selectSource(source, persist = true) {
   dataSource = source;
   document.querySelectorAll(".source-card").forEach((card) => {
     const active = card.dataset.source === source;
+    card.setAttribute("aria-pressed", active ? "true" : "false");
     card.classList.toggle("tw-border-slate-900", active);
     card.classList.toggle("tw-ring-2", active);
     card.classList.toggle("tw-ring-slate-900", active);
     card.classList.toggle("tw-border-slate-200", !active);
   });
-  byId("wizardNext").disabled = false;
+  const nextBtn = byId("wizardNext");
+  if (nextBtn && wizardStep === 1) nextBtn.disabled = false;
+  byId("wizardNextHint")?.classList.add("tw-hidden");
+  if (persist) saveState();
 }
 
 function syncVerifyDatesForSource() {
@@ -182,11 +511,17 @@ function setDataChoice(mode) {
 
 function updateWizardNextState() {
   const nextBtn = byId("wizardNext");
+  const hint = byId("wizardNextHint");
   if (!nextBtn || wizardStep !== WIZARD_STEPS) return;
   if (getDataChoice() === "existing") {
     nextBtn.disabled = selectedReadyDays.size === 0;
+    if (hint) {
+      hint.textContent = selectedReadyDays.size === 0 ? "Select at least one backtest-ready day to continue." : "";
+      hint.classList.toggle("tw-hidden", selectedReadyDays.size > 0);
+    }
   } else {
     nextBtn.disabled = false;
+    if (hint) hint.classList.add("tw-hidden");
   }
 }
 
@@ -285,13 +620,16 @@ async function loadDataInventory() {
 }
 
 function initWizard() {
+  const hasSaved = !!localStorage.getItem(STORAGE_KEY);
   const today = new Date();
   const sixMonthsAgo = new Date(today);
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-  if (byId("covTo")) byId("covTo").value = today.toISOString().slice(0, 10);
-  if (byId("covFrom")) byId("covFrom").value = sixMonthsAgo.toISOString().slice(0, 10);
-  if (byId("runFrom")) byId("runFrom").value = sixMonthsAgo.toISOString().slice(0, 10);
-  if (byId("runTo")) byId("runTo").value = today.toISOString().slice(0, 10);
+  if (!hasSaved) {
+    if (byId("covTo")) byId("covTo").value = today.toISOString().slice(0, 10);
+    if (byId("covFrom")) byId("covFrom").value = sixMonthsAgo.toISOString().slice(0, 10);
+    if (byId("runFrom")) byId("runFrom").value = sixMonthsAgo.toISOString().slice(0, 10);
+    if (byId("runTo")) byId("runTo").value = today.toISOString().slice(0, 10);
+  }
   initDownloadDates();
 
   byId("spotDownloadDate")?.addEventListener("change", () => {
@@ -352,6 +690,12 @@ function initWizard() {
   document.querySelectorAll(".source-card").forEach((card) => {
     card.addEventListener("click", () => selectSource(card.dataset.source));
   });
+  document.querySelectorAll("[data-goto-step]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = Number(btn.dataset.gotoStep);
+      if (target <= wizardStep) setWizardStep(target);
+    });
+  });
   byId("wizardBack")?.addEventListener("click", () => {
     if (wizardStep > 1) setWizardStep(wizardStep - 1);
   });
@@ -359,32 +703,33 @@ function initWizard() {
     if (wizardStep < WIZARD_STEPS) setWizardStep(wizardStep + 1);
     else {
       location.hash = "strategy-lab";
-      document.querySelector('a[href="#strategy-lab"]')?.click();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      byId("strategy-lab")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
-  setWizardStep(1);
 }
 
 let strategyStep = 1;
 const STRATEGY_STEPS = 3;
 
-function selectMode(mode) {
-  byId("replayMode").value = mode;
+function selectMode(mode, persist = true) {
+  replayMode = mode;
   document.querySelectorAll(".mode-card").forEach((card) => {
     const active = card.dataset.mode === mode;
+    card.setAttribute("aria-pressed", active ? "true" : "false");
     card.classList.toggle("tw-border-slate-900", active);
     card.classList.toggle("tw-ring-2", active);
     card.classList.toggle("tw-ring-slate-900", active);
     card.classList.toggle("tw-border-slate-200", !active);
+    card.classList.toggle("tw-border-dashed", !active);
   });
   byId("fullContextFilters")?.classList.toggle("tw-hidden", mode !== "full_context");
+  if (persist) saveState();
 }
 
 function updateRunSummary() {
   const el = byId("runSummary");
   if (!el) return;
-  const mode = byId("replayMode").value === "full_context" ? "Full Context" : "Core";
+  const mode = replayMode === "full_context" ? "Full Context" : "Core";
   el.innerHTML = `
     <div class="tw-flex tw-justify-between"><span class="tw-text-slate-500">Period</span><span class="tw-font-medium">${byId("runFrom").value} → ${byId("runTo").value}</span></div>
     <div class="tw-flex tw-justify-between"><span class="tw-text-slate-500">Mode</span><span class="tw-font-medium">${mode}</span></div>
@@ -405,7 +750,7 @@ function setStrategyStep(step) {
     }
     if (label) {
       label.classList.toggle("tw-text-slate-900", i <= step);
-      label.classList.toggle("tw-text-slate-400", i > step);
+      label.classList.toggle("tw-text-slate-600", i > step);
     }
   }
   byId("strategyBack")?.classList.toggle("tw-invisible", step === 1);
@@ -415,20 +760,20 @@ function setStrategyStep(step) {
     nextBtn.classList.toggle("tw-hidden", step === STRATEGY_STEPS);
   }
   if (step === STRATEGY_STEPS) updateRunSummary();
+  saveState();
 }
 
 function initStrategyWizard() {
   document.querySelectorAll(".mode-card").forEach((card) => {
     card.addEventListener("click", () => selectMode(card.dataset.mode));
   });
-  selectMode(byId("replayMode").value || "full_context");
+  selectMode(replayMode, false);
   byId("strategyBack")?.addEventListener("click", () => {
     if (strategyStep > 1) setStrategyStep(strategyStep - 1);
   });
   byId("strategyNext")?.addEventListener("click", () => {
     if (strategyStep < STRATEGY_STEPS) setStrategyStep(strategyStep + 1);
   });
-  setStrategyStep(1);
 }
 
 function setStatus(elId, text) {
@@ -460,9 +805,12 @@ async function loadDataStatus() {
     await checkBackendCapabilities();
     const storage = status.storage;
     const note = byId("storagePathsNote");
-    if (note && storage) {
-      note.textContent = `Database: ${storage.duckdb || "backend/data/twiq_backtest.duckdb"} · Raw CSV: ${storage.raw_yahoo}, ${storage.raw_dhan}`;
-    }
+    const noteDhan = byId("storagePathsNoteDhan");
+    const storageText = storage
+      ? `Database: ${storage.duckdb || "backend/data/twiq_backtest.duckdb"} · Raw: ${storage.raw_dhan}`
+      : "Data stored locally in backend/data/";
+    if (note) note.textContent = storageText;
+    if (noteDhan) noteDhan.textContent = storageText;
   } catch {
     if (el) {
       el.textContent = "Cannot reach backend — check config.js points to http://127.0.0.1:8000";
@@ -830,14 +1178,22 @@ async function pollJob(jobId, targetId) {
         ? byId("cancelTodayOptionsBtn")
         : byId("cancelBacktestJobBtn");
   const job = await api(`/api/data/jobs/${jobId}`);
-  byId(targetId).textContent = formatJobStatus(job);
+  const targetEl = byId(targetId);
+  if (targetEl) targetEl.textContent = formatJobStatus(job);
+  if (job.status === "failed" && job.error_message) {
+    showError(job.error_message);
+    if (targetId === "runStatus") setButtonLoading(byId("runBacktestBtn"), false);
+  }
   if (job.status === "queued" || job.status === "running") {
     if (cancelBtn) cancelBtn.classList.remove("tw-hidden");
     setTimeout(() => pollJob(jobId, targetId), 2000);
   } else {
     if (cancelBtn) cancelBtn.classList.add("tw-hidden");
     activeJobId = null;
-    if (targetId === "runStatus") refreshRuns();
+    if (targetId === "runStatus") {
+      setButtonLoading(byId("runBacktestBtn"), false);
+      refreshRuns();
+    }
     if (targetId === "dhanStatus" || targetId === "todayOptionsStatus" || targetId === "todayOptionsStatusDhan") {
       refreshChecklist().catch(() => {});
       refreshDhanJsonHints().catch(() => {});
@@ -874,7 +1230,7 @@ function readSettings() {
     reentry_cooldown_candles: 1,
     fill_slippage_rupees: 0.5,
     exit_slippage_rupees: 0.5,
-    replay_mode: byId("replayMode").value,
+    replay_mode: replayMode,
     reversal_enabled: byId("reversalEnabled").checked,
     pcr_filter_enabled: byId("pcrFilterEnabled").checked,
     pcr_ce_block: Number(byId("pcrCeBlock").value || 0.7),
@@ -892,23 +1248,36 @@ function readSettings() {
 
 async function runBacktest(event) {
   event.preventDefault();
-  const payload = {
-    settings: readSettings(),
-    from_date: byId("runFrom").value,
-    to_date: byId("runTo").value,
-    cost_preset: byId("costPreset").value,
-  };
-  const data = await api("/api/backtests/runs", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  byId("runStatus").textContent = `Backtest queued (job ${data.job_id?.slice(0, 8) || "—"})…`;
-  if (data.job_id) pollJob(data.job_id, "runStatus");
-  setTimeout(refreshRuns, 3000);
-  setTimeout(() => {
-    location.hash = "results";
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, 1500);
+  const runBtn = byId("runBacktestBtn");
+  try {
+    await checkRunDateCoverage();
+    const warning = byId("runDateWarning");
+    if (warning && !warning.classList.contains("tw-hidden")) {
+      const ok = window.confirm(`${warning.textContent}\n\nRun anyway?`);
+      if (!ok) return;
+    }
+    setButtonLoading(runBtn, true, "Running…");
+    const payload = {
+      settings: readSettings(),
+      from_date: byId("runFrom").value,
+      to_date: byId("runTo").value,
+      cost_preset: byId("costPreset").value,
+    };
+    const data = await api("/api/backtests/runs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    byId("runStatus").textContent = `Backtest queued (job ${data.job_id?.slice(0, 8) || "—"})…`;
+    if (data.job_id) pollJob(data.job_id, "runStatus");
+    setTimeout(refreshRuns, 3000);
+    setTimeout(() => {
+      location.hash = "results";
+      byId("results")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 1500);
+  } catch (error) {
+    showError(error.message || "Backtest failed to start");
+    setButtonLoading(runBtn, false);
+  }
 }
 
 function statusBadge(status) {
@@ -927,10 +1296,28 @@ function pnlClass(pnl) {
 }
 
 async function refreshRuns() {
-  const runs = await api("/api/backtests/runs");
-  byId("runsTableBody").innerHTML = runs
-    .map(
-      (run) => {
+  const btn = byId("refreshRunsBtn");
+  setButtonLoading(btn, true, "Refreshing…");
+  try {
+    const runs = await api("/api/backtests/runs");
+    populateReplayRunSelect(runs);
+    const empty = byId("runsEmptyState");
+    const tableWrap = byId("runsTableWrap");
+    const summary = byId("runsSummary");
+
+    if (!runs.length) {
+      empty?.classList.remove("tw-hidden");
+      tableWrap?.classList.add("tw-hidden");
+      if (summary) summary.innerHTML = "";
+      byId("runsTableBody").innerHTML = "";
+      return;
+    }
+
+    empty?.classList.add("tw-hidden");
+    tableWrap?.classList.remove("tw-hidden");
+
+    byId("runsTableBody").innerHTML = runs
+      .map((run) => {
         const pnl = run.summary?.net_pnl || 0;
         const selected = selectedRunId === run.id;
         return `<tr data-run-id="${run.id}" class="tw-cursor-pointer hover:tw-bg-slate-50 ${selected ? "tw-bg-violet-50" : ""}">
@@ -940,25 +1327,30 @@ async function refreshRuns() {
         <td class="tw-px-4 tw-py-3">${statusBadge(run.status)}</td>
         <td class="tw-px-4 tw-py-3 tw-text-right ${pnlClass(pnl)}">${formatInr.format(pnl)}</td>
         <td class="tw-px-4 tw-py-3 tw-text-right tw-text-slate-600">${run.summary?.total_trades || 0}</td>
+        <td class="tw-px-4 tw-py-3"><button type="button" class="tw-text-xs tw-text-violet-600 hover:tw-underline" data-view-log="${run.id}">View log</button></td>
       </tr>`;
-      }
-    )
-    .join("");
+      })
+      .join("");
 
-  document.querySelectorAll("[data-select-run]").forEach((button) => {
-    button.addEventListener("click", (e) => {
-      e.stopPropagation();
-      selectRun(button.dataset.selectRun);
+    document.querySelectorAll("[data-select-run]").forEach((button) => {
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selectRun(button.dataset.selectRun);
+      });
     });
-  });
-  document.querySelectorAll("#runsTableBody tr").forEach((row) => {
-    row.addEventListener("click", () => selectRun(row.dataset.runId));
-  });
+    document.querySelectorAll("[data-view-log]").forEach((button) => {
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        viewRunLog(button.dataset.viewLog);
+      });
+    });
+    document.querySelectorAll("#runsTableBody tr").forEach((row) => {
+      row.addEventListener("click", () => selectRun(row.dataset.runId));
+    });
 
-  if (runs[0]) {
     const r = runs[0];
     const pnl = r.summary?.net_pnl || 0;
-    byId("runsSummary").innerHTML = `
+    summary.innerHTML = `
       <div class="tw-rounded-xl tw-border tw-border-slate-200 tw-bg-white tw-p-4">
         <p class="tw-text-xs tw-text-slate-500 tw-mb-1">Latest run</p>
         <p class="tw-font-mono tw-text-sm tw-font-semibold">${r.id.slice(0, 8)}</p>
@@ -976,12 +1368,19 @@ async function refreshRuns() {
         <p class="tw-text-lg tw-font-semibold tw-text-slate-900">${formatInr.format(r.summary?.max_drawdown || 0)}</p>
       </div>`;
     if (!selectedRunId) selectRun(runs[0].id);
+  } catch (error) {
+    showError(error.message || "Failed to load runs");
+  } finally {
+    setButtonLoading(btn, false);
   }
 }
 
 async function selectRun(runId) {
   selectedRunId = runId;
-  byId("replayRunId").value = runId;
+  const hidden = byId("replayRunId");
+  const select = byId("replayRunSelect");
+  if (hidden) hidden.value = runId;
+  if (select) select.value = runId;
   byId("selectedRunPanel")?.classList.remove("tw-hidden");
   const trades = await api(`/api/backtests/runs/${runId}/trades`);
   byId("tradesTableBody").innerHTML = trades
@@ -1007,23 +1406,40 @@ async function selectRun(runId) {
 
 async function compareRuns() {
   const ids = byId("compareRunIds").value.split(",").map((v) => v.trim()).filter(Boolean);
-  if (ids.length < 2) return alert("Enter at least two run IDs");
-  const data = await api("/api/backtests/compare", {
-    method: "POST",
-    body: JSON.stringify({ run_ids: ids }),
-  });
-  byId("compareResult").textContent = JSON.stringify(data, null, 2);
+  if (ids.length < 2) {
+    showError("Enter at least two run IDs to compare");
+    return;
+  }
+  try {
+    const data = await api("/api/backtests/compare", {
+      method: "POST",
+      body: JSON.stringify({ run_ids: ids }),
+    });
+    byId("compareResult").textContent = JSON.stringify(data, null, 2);
+    showToast("Comparison ready", "success");
+  } catch (error) {
+    showError(error.message || "Compare failed");
+  }
 }
 
 async function exportRun(format) {
-  if (!selectedRunId) return alert("Select a run first");
-  const data = await api(`/api/backtests/runs/${selectedRunId}/export?format=${format}`);
-  if (format === "json") {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    downloadBlob(blob, `backtest-${selectedRunId.slice(0, 8)}.json`);
-  } else {
-    const blob = new Blob([data.content], { type: format === "html" ? "text/html" : "text/csv" });
-    downloadBlob(blob, `backtest-${selectedRunId.slice(0, 8)}.${format}`);
+  if (!selectedRunId) {
+    showError("Select a run first");
+    return;
+  }
+  try {
+    const data = await api(`/api/backtests/runs/${selectedRunId}/export?format=${format}`);
+    const filename = `backtest-${selectedRunId.slice(0, 8)}.${format}`;
+    if (format === "json") {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      downloadBlob(blob, filename);
+    } else {
+      const blob = new Blob([data.content], { type: format === "html" ? "text/html" : "text/csv" });
+      downloadBlob(blob, filename);
+    }
+    showToast(`Downloaded ${filename}`, "success");
+  } catch (error) {
+    showError(error.message || "Export failed");
   }
 }
 
@@ -1072,8 +1488,8 @@ function renderReplayTable(signals) {
   body.innerHTML = signals
     .map(
       (s) => `<tr class="hover:tw-bg-slate-50 tw-align-top">
-      <td class="tw-px-3 tw-py-2 tw-text-xs tw-whitespace-nowrap tw-text-slate-600">${formatSignalTime(s.timestamp)}</td>
-      <td class="tw-px-3 tw-py-2">${signalStatusBadge(s.status)}</td>
+      <td class="tw-px-3 tw-py-2 tw-text-xs tw-whitespace-nowrap tw-text-slate-600 replay-sticky-col">${formatSignalTime(s.timestamp)}</td>
+      <td class="tw-px-3 tw-py-2 replay-sticky-col-2">${signalStatusBadge(s.status)}</td>
       <td class="tw-px-3 tw-py-2 tw-font-medium tw-text-slate-900">${escapeHtml(s.side || "—")}</td>
       <td class="tw-px-3 tw-py-2">${s.strike ?? "—"}</td>
       <td class="tw-px-3 tw-py-2 tw-text-xs tw-text-slate-600">${escapeHtml(s.signal_layer || "—")}</td>
@@ -1099,19 +1515,25 @@ function setReplayView(mode) {
     tableBtn.classList.toggle("tw-text-white", isTable);
     tableBtn.classList.toggle("tw-bg-white", !isTable);
     tableBtn.classList.toggle("tw-text-slate-700", !isTable);
+    tableBtn.setAttribute("aria-pressed", isTable ? "true" : "false");
   }
   if (jsonBtn) {
     jsonBtn.classList.toggle("tw-bg-slate-900", !isTable);
     jsonBtn.classList.toggle("tw-text-white", !isTable);
     jsonBtn.classList.toggle("tw-bg-white", isTable);
     jsonBtn.classList.toggle("tw-text-slate-700", isTable);
+    jsonBtn.setAttribute("aria-pressed", !isTable ? "true" : "false");
   }
 }
 
 async function loadReplay() {
-  const runId = byId("replayRunId").value;
-  if (!runId) return alert("Enter a run ID or select one from Results");
-  const data = await api(`/api/backtests/runs/${runId}/replay`);
+  const runId = byId("replayRunSelect")?.value || byId("replayRunId")?.value;
+  if (!runId) {
+    showError("Select a run from the dropdown");
+    return;
+  }
+  try {
+    const data = await api(`/api/backtests/runs/${runId}/replay`);
   renderReplayTable(data.signals || []);
   byId("replayLog").textContent = JSON.stringify(data, null, 2);
   const taken = (data.signals || []).filter((s) => s.status === "Taken").length;
@@ -1123,37 +1545,59 @@ async function loadReplay() {
   setReplayView("table");
   renderEquityChart(byId("equityChart"), data.equity || []);
   renderDrawdownChart(byId("drawdownChart"), data.equity || []);
+  } catch (error) {
+    showError(error.message || "Failed to load replay log");
+  }
 }
 
-byId("previewCsvBtn").addEventListener("click", () => previewCsv().catch((e) => alert(e.message)));
-byId("importCsvBtn").addEventListener("click", () => importCsv().catch((e) => alert(e.message)));
-byId("previewCsvBtnYahoo")?.addEventListener("click", () => previewCsv("csvFileOptionsYahoo", "importResultYahoo").catch((e) => alert(e.message)));
-byId("importCsvBtnYahoo")?.addEventListener("click", () => importCsv("csvFileOptionsYahoo", "importResultYahoo").catch((e) => alert(e.message)));
+byId("previewCsvBtn").addEventListener("click", () => previewCsv().catch((e) => showError(e.message)));
+byId("importCsvBtn").addEventListener("click", () => importCsv().catch((e) => showError(e.message)));
+byId("previewCsvBtnYahoo")?.addEventListener("click", () => previewCsv("csvFileOptionsYahoo", "importResultYahoo").catch((e) => showError(e.message)));
+byId("importCsvBtnYahoo")?.addEventListener("click", () => importCsv("csvFileOptionsYahoo", "importResultYahoo").catch((e) => showError(e.message)));
 byId("csvFileOptions")?.addEventListener("change", () => updateOptionsFileCount());
 byId("csvFileOptionsYahoo")?.addEventListener("change", () => updateOptionsFileCount("csvFileOptionsYahoo", "optionsFileCountYahoo"));
-byId("importNiftyBtn")?.addEventListener("click", () => importCsvForType("nifty_candles", "csvFileNifty", "importResultNifty").catch((e) => alert(e.message)));
-byId("importVixBtn")?.addEventListener("click", () => importCsvForType("india_vix", "csvFileVix", "importResultVix").catch((e) => alert(e.message)));
-byId("dhanSyncBtn").addEventListener("click", () => startDhanSync().catch((e) => alert(e.message)));
-byId("yahooSyncBtn")?.addEventListener("click", () => startYahooSync().catch((e) => alert(e.message)));
-byId("todayOptionsBtn")?.addEventListener("click", () => startTodayOptions("todayOptionsStatus", "optionsDownloadDate").catch((e) => alert(e.message)));
-byId("todayOptionsBtnDhan")?.addEventListener("click", () => startTodayOptions("todayOptionsStatusDhan", "optionsDownloadDateDhan").catch((e) => alert(e.message)));
-byId("cancelTodayOptionsBtn")?.addEventListener("click", () => cancelActiveJob().catch((e) => alert(e.message)));
-byId("cancelDhanJobBtn").addEventListener("click", () => cancelActiveJob().catch((e) => alert(e.message)));
-byId("cancelBacktestJobBtn").addEventListener("click", () => cancelActiveJob().catch((e) => alert(e.message)));
-byId("coverageBtn").addEventListener("click", () => loadCoverage().catch((e) => alert(e.message)));
-byId("covFrom")?.addEventListener("change", () => refreshChecklist().catch(() => {}));
-byId("covTo")?.addEventListener("change", () => refreshChecklist().catch(() => {}));
-byId("backtestForm").addEventListener("submit", (e) => runBacktest(e).catch((err) => alert(err.message)));
-byId("refreshRunsBtn").addEventListener("click", () => refreshRuns().catch((e) => alert(e.message)));
-byId("loadReplayBtn").addEventListener("click", () => loadReplay().catch((e) => alert(e.message)));
+byId("importNiftyBtn")?.addEventListener("click", () => importCsvForType("nifty_candles", "csvFileNifty", "importResultNifty").catch((e) => showError(e.message)));
+byId("importVixBtn")?.addEventListener("click", () => importCsvForType("india_vix", "csvFileVix", "importResultVix").catch((e) => showError(e.message)));
+byId("dhanSyncBtn").addEventListener("click", () => startDhanSync().catch((e) => showError(e.message)));
+byId("yahooSyncBtn")?.addEventListener("click", () => startYahooSync().catch((e) => showError(e.message)));
+byId("todayOptionsBtn")?.addEventListener("click", () => startTodayOptions("todayOptionsStatus", "optionsDownloadDate").catch((e) => showError(e.message)));
+byId("todayOptionsBtnDhan")?.addEventListener("click", () => startTodayOptions("todayOptionsStatusDhan", "optionsDownloadDateDhan").catch((e) => showError(e.message)));
+byId("cancelTodayOptionsBtn")?.addEventListener("click", () => cancelActiveJob().catch((e) => showError(e.message)));
+byId("cancelDhanJobBtn").addEventListener("click", () => cancelActiveJob().catch((e) => showError(e.message)));
+byId("cancelBacktestJobBtn").addEventListener("click", () => cancelActiveJob().catch((e) => showError(e.message)));
+byId("coverageBtn").addEventListener("click", () => loadCoverage().catch((e) => showError(e.message)));
+byId("covFrom")?.addEventListener("change", () => {
+  syncDateFields("covFrom");
+  refreshChecklist().catch(() => {});
+});
+byId("covTo")?.addEventListener("change", () => {
+  syncDateFields("covTo");
+  refreshChecklist().catch(() => {});
+});
+byId("backtestForm").addEventListener("submit", (e) => runBacktest(e));
+byId("refreshRunsBtn").addEventListener("click", () => refreshRuns());
+byId("loadReplayBtn").addEventListener("click", () => loadReplay());
+byId("replayRunSelect")?.addEventListener("change", () => {
+  const id = byId("replayRunSelect")?.value;
+  if (byId("replayRunId")) byId("replayRunId").value = id || "";
+});
 byId("replayViewTableBtn")?.addEventListener("click", () => setReplayView("table"));
 byId("replayViewJsonBtn")?.addEventListener("click", () => setReplayView("json"));
-byId("compareBtn").addEventListener("click", () => compareRuns().catch((e) => alert(e.message)));
-byId("exportJsonBtn").addEventListener("click", () => exportRun("json").catch((e) => alert(e.message)));
-byId("exportCsvBtn").addEventListener("click", () => exportRun("csv").catch((e) => alert(e.message)));
-byId("exportHtmlBtn").addEventListener("click", () => exportRun("html").catch((e) => alert(e.message)));
+byId("compareBtn").addEventListener("click", () => compareRuns());
+byId("exportJsonBtn").addEventListener("click", () => exportRun("json"));
+byId("exportCsvBtn").addEventListener("click", () => exportRun("csv"));
+byId("exportHtmlBtn").addEventListener("click", () => exportRun("html"));
 
+restoreState();
+bindPersistence();
+initSectionNav();
+initAnchorScroll();
+updateAdvancedBadge();
 refreshRuns().catch(() => {});
 loadDataStatus().catch(() => {});
 initWizard();
+setWizardStep(wizardStep);
 initStrategyWizard();
+setStrategyStep(strategyStep);
+checkRunDateCoverage().catch(() => {});
+updatePageTitle("data-manager");

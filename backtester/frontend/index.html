@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="backtester-base" content="" />
+  <title>Options Backtester</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="portal-assets/styles.css" />
+  <link rel="stylesheet" href="static/style.css" />
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <div id="sidebar-root"></div>
+    <div class="workspace backtester-workspace">
+      <a class="skip-link" href="#main">Skip to content</a>
+      <main id="main">
+        <header class="backtester-topbar">
+          <div>
+            <p class="eyebrow">Historical replay · server-side</p>
+            <h2>Options Backtester</h2>
+          </div>
+          <p class="muted backtester-topbar-note">Drop or paste a Python strategy, run bar-by-bar, see every decision.</p>
+        </header>
+
+    <!-- 1. Data panel -->
+    <section class="panel data-panel" aria-labelledby="data-heading">
+      <div class="data-panel-header">
+        <h2 id="data-heading">NIFTY</h2>
+        <p class="data-subtitle">Spot &amp; IV from Yahoo Finance · Options chain from Dhan API</p>
+      </div>
+
+      <div class="source-row" aria-label="Data sources">
+        <div class="source-card source-yahoo">
+          <span class="source-badge">Yahoo Finance</span>
+          <strong>NIFTY spot</strong>
+          <span class="source-detail">OHLC bars + ATM implied volatility</span>
+          <label class="upload-btn">
+            Upload spot CSV/parquet
+            <input type="file" id="upload-spot" accept=".csv,.parquet" hidden />
+          </label>
+        </div>
+        <div class="source-plus" aria-hidden="true">+</div>
+        <div class="source-card source-dhan">
+          <span class="source-badge">Dhan API</span>
+          <strong>Options CE / PE</strong>
+          <span class="source-detail">ATM ±N strikes · premium, OI, volume</span>
+          <label class="upload-btn">
+            Upload options CSV/parquet
+            <input type="file" id="upload-options" accept=".csv,.parquet" hidden />
+          </label>
+        </div>
+      </div>
+
+      <div class="data-rows">
+        <div class="data-row">
+          <label>
+            Interval
+            <select id="interval">
+              <option value="1min" selected>1 min</option>
+              <option value="5min">5 min</option>
+              <option value="15min">15 min</option>
+            </select>
+          </label>
+          <label>
+            Upload date
+            <input type="date" id="upload-date" title="Trading day for uploaded files (optional if filename or data has a date)" />
+          </label>
+          <label>
+            Start
+            <input type="date" id="start-date" />
+          </label>
+          <label>
+            End
+            <input type="date" id="end-date" />
+          </label>
+          <div class="data-row-action">
+            <button type="button" id="download-btn" class="btn btn-secondary">Download missing</button>
+            <button type="button" id="force-download-btn" class="btn btn-small" title="Re-fetch all days from Yahoo/Dhan (replaces demo cache)">Force refresh</button>
+          </div>
+        </div>
+        <div class="data-row data-row-strikes">
+          <label class="strikes-label">
+            Strikes around ATM
+            <select id="strikes">
+              <option value="5">±5</option>
+              <option value="10" selected>±10</option>
+              <option value="15">±15</option>
+              <option value="18">±18</option>
+            </select>
+          </label>
+          <span class="strikes-hint">Same dates &amp; interval for both · strike step 50 · skips already cached days</span>
+          <span id="download-status" class="status-text" aria-live="polite"></span>
+          <span id="cloud-cache-note" class="strikes-hint muted" hidden></span>
+        </div>
+      </div>
+
+      <div class="cache-toolbar">
+        <button type="button" id="select-all-runnable" class="btn btn-small">
+          Select all in range (spot + options)
+        </button>
+      </div>
+      <div class="cache-grid">
+        <div class="cache-col">
+          <div class="cache-col-header">
+            <h3>NIFTY spot <span class="muted">(Yahoo)</span></h3>
+            <div class="cache-col-actions">
+              <button type="button" class="btn-link" data-select-all="spot">Select all</button>
+              <button type="button" class="btn-link" data-clear="spot">Clear</button>
+            </div>
+          </div>
+          <ul id="spot-cache" class="cache-select-list">
+            <li class="muted">Loading…</li>
+          </ul>
+        </div>
+        <div class="cache-col">
+          <div class="cache-col-header">
+            <h3>Options CE/PE <span class="muted">(Dhan)</span></h3>
+            <div class="cache-col-actions">
+              <button type="button" class="btn-link" data-select-all="options">Select all</button>
+              <button type="button" class="btn-link" data-clear="options">Clear</button>
+            </div>
+          </div>
+          <ul id="options-cache" class="cache-select-list">
+            <li class="muted">Loading…</li>
+          </ul>
+        </div>
+      </div>
+      <p id="selection-summary" class="selection-summary muted">Select cached dates above (both spot + options required to run).</p>
+    </section>
+
+    <!-- 2. Strategy input -->
+    <section class="panel" aria-labelledby="strategy-heading">
+      <h2 id="strategy-heading">Strategy</h2>
+      <details class="help-box">
+        <summary>How to write a strategy</summary>
+        <pre class="help-pre"><code>class Strategy:
+    def setup(self, ctx):
+        ctx.params["key"] = 1.0   # optional
+
+    def on_bar(self, snapshot, ctx):
+        # Read market: snapshot.spot, snapshot.atm_strike,
+        # snapshot.option(strike, "CE"), snapshot.by_offset(n, "PE")
+
+        if ctx.position:
+            return ctx.exit(reason="…")   # or ctx.hold()
+
+        if some_condition_fails:
+            return ctx.skip(reason="exact reason here")
+
+        return ctx.enter(side="CE", strike="ATM", direction="BUY",
+                         qty=1, reason="why entering")</code></pre>
+        <p class="muted">You must call exactly one of: <code>enter</code>, <code>exit</code>, <code>skip</code>, or <code>hold</code> each bar.</p>
+      </details>
+      <div class="strategy-row">
+        <div
+          id="drop-zone"
+          class="drop-zone"
+          tabindex="0"
+          role="button"
+          aria-label="Drop strategy Python file here"
+        >
+          <p class="drop-title">Drop strategy.py here</p>
+          <p class="muted">or click to browse (.py only)</p>
+          <input type="file" id="file-input" accept=".py" hidden />
+        </div>
+        <div class="editor-wrap">
+          <label for="editor" class="sr-only">Strategy code</label>
+          <div id="editor"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Run -->
+    <div class="run-wrap">
+      <button type="button" id="run-btn" class="btn btn-primary btn-large">Run Strategy</button>
+    </div>
+
+    <!-- 4. Results -->
+    <section class="panel results-panel" aria-labelledby="results-heading" hidden id="results-section">
+      <h2 id="results-heading">Results</h2>
+      <div id="error-banner" class="error-banner" hidden role="alert"></div>
+
+      <div id="summary-strip" class="summary-strip" aria-label="Summary statistics"></div>
+
+      <div class="table-block">
+        <div class="table-header">
+          <h3>Decisions</h3>
+          <button type="button" id="export-decisions" class="btn btn-small">Export CSV</button>
+        </div>
+        <div class="table-scroll">
+          <table id="decisions-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>timestamp</th>
+                <th>decision</th>
+                <th>side</th>
+                <th>direction</th>
+                <th>strike</th>
+                <th>spot</th>
+                <th>fill_price</th>
+                <th>qty</th>
+                <th>reason</th>
+                <th>pnl</th>
+                <th>cum_pnl</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-block">
+        <div class="table-header">
+          <h3>Trades</h3>
+          <button type="button" id="export-trades" class="btn btn-small">Export CSV</button>
+        </div>
+        <div class="table-scroll">
+          <table id="trades-table">
+            <thead>
+              <tr>
+                <th>entry_time</th>
+                <th>exit_time</th>
+                <th>side</th>
+                <th>strike</th>
+                <th>direction</th>
+                <th>entry</th>
+                <th>exit</th>
+                <th>qty</th>
+                <th>pnl</th>
+                <th>hold_duration</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    if (location.hostname === "127.0.0.1" || location.hostname === "localhost") {
+      if (location.port === "8080") {
+        window.TWIQ_PAPER_BASE = "http://127.0.0.1:4174";
+        window.TWIQ_BACKTESTER_BASE = "http://127.0.0.1:8080";
+      }
+    }
+  </script>
+  <script src="portal-assets/sidebar.js"></script>
+  <script>initSidebar({ active: "backtester", showSession: false });</script>
+  <script type="module" src="static/app.js"></script>
+</body>
+</html>

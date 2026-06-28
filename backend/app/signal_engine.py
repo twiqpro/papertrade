@@ -73,6 +73,21 @@ class MarketContext:
     history_seeded: bool = False
 
 
+@dataclass
+class PendingLimitOrder:
+    side: OptionSide
+    strike: int
+    limit: float
+    armed_candle_count: int
+    age: int = 0
+
+
+EMA_ATM_STRIKE_OFFSET = 3
+EMA_ATM_ORDER_TTL_BARS = 9
+_pending_limit_order: PendingLimitOrder | None = None
+_pending_last_candle_count: int = -1
+
+
 def calc_ema_series(closes: list[float], period: int) -> list[float]:
     if not closes:
         return []
@@ -205,8 +220,28 @@ _entry_evaluated_candle_count: int = -1
 
 
 def reset_entry_bar_tracking() -> None:
-    global _entry_evaluated_candle_count
+    global _entry_evaluated_candle_count, _pending_limit_order, _pending_last_candle_count
     _entry_evaluated_candle_count = -1
+    _pending_limit_order = None
+    _pending_last_candle_count = -1
+
+
+def _limit_price(atm_ltp: float, offset: int = EMA_ATM_STRIKE_OFFSET) -> int:
+    raw = int(round(atm_ltp)) - offset
+    while raw > 0 and raw % 5 == 0:
+        raw -= 2
+    return raw
+
+
+def _quote_for_strike(ctx: MarketContext, strike: int, side: OptionSide) -> OptionQuote:
+    key = f"{strike:.6f}"
+    row = (ctx.chain_oc or {}).get(key)
+    if not row:
+        return ctx.atm_ce if side == "CE" else ctx.atm_pe
+    payload = row.get("ce") if side == "CE" else row.get("pe")
+    if not payload:
+        return OptionQuote(0, 0, 0, 0, 0, 0)
+    return quote_from_chain_row(payload)
 
 
 def evaluate_entry_signal(
@@ -216,13 +251,11 @@ def evaluate_entry_signal(
     remaining_daily_budget: Optional[float] = None,
     has_open_position: bool = False,
 ) -> Signal:
-    global _entry_evaluated_candle_count
+    global _pending_limit_order, _pending_last_candle_count
 
-    from .strategy_module.ema_macd_cross import build_indicator_bars, entry_signal, entry_skip_reason
-
-    ctx = _enrich_context_indicators(ctx, settings)
     strike = ctx.atm_strike
     ema_gap = abs(ctx.ema_9 - ctx.ema_20) if ctx.ema_20 else abs(ctx.ema_9 - ctx.ema_15)
+    gap = (ctx.ema_9 - ctx.ema_20) if ctx.ema_20 else (ctx.ema_9 - ctx.ema_15)
 
     if has_open_position:
         return _signal(now, "Position", None, ema_gap, "Skipped", "Open paper position — one at a time", strike, None)
@@ -253,21 +286,58 @@ def evaluate_entry_signal(
             None,
         )
 
-    if candle_count <= _entry_evaluated_candle_count:
-        return _signal(now, "Bar", None, ema_gap, "Skipped", "Waiting for next 5m bar close", strike, None)
+    if _pending_limit_order is not None:
+        pending = _pending_limit_order
+        if candle_count > _pending_last_candle_count:
+            pending.age += 1
+            _pending_last_candle_count = candle_count
 
-    rows = build_indicator_bars(ctx.candles, settings)
-    if len(rows) < 2:
-        return _signal(now, "Data", None, ema_gap, "Skipped", "Need 2+ bars for cross detection", strike, None)
+        if not is_trade_window_open(now, settings):
+            _pending_limit_order = None
+            return _signal(now, "Limit cancelled", pending.side, ema_gap, "Skipped", "Cancelled after entry cutoff", pending.strike, pending.limit)
 
-    prev, cur = rows[-2], rows[-1]
-    _entry_evaluated_candle_count = candle_count
+        still_valid = abs(gap) >= settings.ema_gap_min_points and ((gap > 0) == (pending.side == "CE"))
+        if not still_valid:
+            _pending_limit_order = None
+            return _signal(now, "Limit cancelled", pending.side, ema_gap, "Skipped", f"EMA gap {gap:+.1f} no longer supports {pending.side}", pending.strike, pending.limit)
 
-    side = entry_signal(prev, cur, settings)
-    if side is None:
-        reason = entry_skip_reason(prev, cur, settings)
-        return _signal(now, "EMA cross", None, ema_gap, "Skipped", reason, strike, None)
+        if pending.age > EMA_ATM_ORDER_TTL_BARS:
+            _pending_limit_order = None
+            return _signal(now, "Limit cancelled", pending.side, ema_gap, "Skipped", f"TTL {EMA_ATM_ORDER_TTL_BARS} bars expired", pending.strike, pending.limit)
 
+        quote = _quote_for_strike(ctx, pending.strike, pending.side)
+        option_ltp = quote.ltp
+        if option_ltp <= 0:
+            return _signal(now, "Limit resting", pending.side, ema_gap, "Skipped", f"No {pending.side} quote at {pending.strike}", pending.strike, pending.limit)
+
+        if option_ltp <= pending.limit:
+            _pending_limit_order = None
+            return _signal(
+                now,
+                "EMA ATM limit fill",
+                pending.side,
+                ema_gap,
+                "Taken",
+                f"Resting limit {pending.limit:.1f} hit on {pending.side} {pending.strike} (LTP {option_ltp:.1f})",
+                pending.strike,
+                pending.limit,
+            )
+
+        return _signal(
+            now,
+            "Limit resting",
+            pending.side,
+            ema_gap,
+            "Skipped",
+            f"Limit {pending.limit:.1f} resting on {pending.side} {pending.strike} (LTP {option_ltp:.1f})",
+            pending.strike,
+            pending.limit,
+        )
+
+    if abs(gap) < settings.ema_gap_min_points:
+        return _signal(now, "EMA gap", None, ema_gap, "Skipped", f"EMA gap {gap:+.1f} < {settings.ema_gap_min_points}", strike, None)
+
+    side: OptionSide = "CE" if gap > 0 else "PE"
     quote = ctx.atm_ce if side == "CE" else ctx.atm_pe
     option_ltp = quote.ltp
 
@@ -281,28 +351,32 @@ def evaluate_entry_signal(
     if settings.vix_filter_enabled and ctx.india_vix is not None and ctx.india_vix >= settings.max_india_vix:
         return _signal(now, "Liquidity", side, ema_gap, "Skipped", f"India VIX {ctx.india_vix:.1f} above cap", strike, option_ltp)
 
-    if settings.use_full_capital:
-        lots = capital_lots(settings, option_ltp)
-    else:
-        lots = settings.lots_per_trade
+    effective_capital = settings.capital_budget
+    if remaining_daily_budget is not None:
+        effective_capital = max(0.0, settings.capital_budget + remaining_daily_budget - settings.daily_risk)
+    sizing_settings = settings.model_copy(update={"capital_budget": effective_capital})
+    lots = capital_lots(sizing_settings, option_ltp) if settings.use_full_capital else settings.lots_per_trade
     if lots < 1:
         return _signal(now, "Sizing", side, ema_gap, "Skipped", "Cannot support 1 lot", strike, option_ltp)
 
+    limit = _limit_price(option_ltp)
+    if limit <= 0:
+        return _signal(now, "Limit", side, ema_gap, "Skipped", f"ATM premium too low to arm limit ({option_ltp:.1f})", strike, option_ltp)
+
+    _pending_limit_order = PendingLimitOrder(side=side, strike=strike, limit=float(limit), armed_candle_count=candle_count)
+    _pending_last_candle_count = candle_count
     return _signal(
         now,
-        "EMA big-bar cross",
+        "EMA ATM limit armed",
         side,
         ema_gap,
-        "Taken",
+        "Skipped",
         (
-            f"9/20 cross + big bar (body >= {settings.big_bar_atr_mult}x ATR)"
-            f"{ ' · MACD confirm' if settings.require_macd else ''}"
-            f" · SL -{settings.sl_pct:.0%} prem"
-            f"{f' · TP +{settings.target_pct:.0%}' if settings.target_pct_enabled else ''}"
-            f" · {lots} lot(s)"
+            f"Armed BUY limit {limit:.1f} on {side} {strike}; "
+            f"premium {option_ltp:.1f}, EMA gap {gap:+.1f}, approx {lots} lot(s)"
         ),
         strike,
-        option_ltp,
+        float(limit),
     )
 
 
@@ -382,7 +456,8 @@ def build_market_context(
     spot = float(chain.get("last_price") or 0)
     candles = parse_candles(candles_raw)
     session_candles = parse_candles(session_candles_raw) if session_candles_raw else candles
-    closes = [bar.close for bar in candles]
+    indicator_bars = session_candles or candles
+    closes = [bar.close for bar in indicator_bars]
     ema_series = calc_ema_series(closes, 9)
     ema_9 = ema_series[-1] if ema_series else spot
     ema_15 = calc_ema_series(closes, 15)[-1] if closes else spot
@@ -415,7 +490,7 @@ def build_market_context(
         ema_9=ema_9,
         ema_15=ema_15,
         ema_9_history=ema_series[-3:],
-        candles=candles,
+        candles=indicator_bars,
         vwap=vwap_value,
         vwap_label=vwap_label,
         atr_14=calc_atr(candles),

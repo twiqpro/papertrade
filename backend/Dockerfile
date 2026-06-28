@@ -14,7 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt -r backtester-requirements.tx
 
 COPY backend/app ./app
 COPY backtester ./backtester
-COPY frontend ./frontend
 
 EXPOSE 8000
 

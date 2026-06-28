@@ -19,6 +19,7 @@ from engine.runner import run_strategy
 
 ROOT = Path(__file__).resolve().parent
 FRONTEND = ROOT / "frontend"
+PORTAL_ASSETS = ROOT / "portal-assets"
 PORTAL_FRONTEND = ROOT.parent / "frontend"
 EXAMPLE = ROOT / "strategies" / "ema_atm_high_win.py"
 ROOT_PATH = os.environ.get("ROOT_PATH", "").rstrip("/")
@@ -46,8 +47,9 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory=str(FRONTEND)), name="static")
-if PORTAL_FRONTEND.is_dir():
-    app.mount("/portal-assets", StaticFiles(directory=str(PORTAL_FRONTEND)), name="portal-assets")
+_portal_dir = PORTAL_ASSETS if PORTAL_ASSETS.is_dir() else PORTAL_FRONTEND
+if _portal_dir.is_dir():
+    app.mount("/portal-assets", StaticFiles(directory=str(_portal_dir)), name="portal-assets")
 
 
 class DownloadRequest(BaseModel):

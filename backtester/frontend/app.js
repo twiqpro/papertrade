@@ -459,18 +459,76 @@ function inferDayFromFile(file) {
   return m ? m[1] : null;
 }
 
-function dataFilesFromInput(fileList) {
-  return Array.from(fileList || []).filter((f) => /\.(csv|parquet)$/i.test(f.name));
+function dataFilesFromInput(fileList, kind = "options") {
+  return Array.from(fileList || []).filter((f) => {
+    const n = f.name.toLowerCase();
+    if (kind === "options") return /\.(csv|parquet|json)$/i.test(n);
+    return /\.(csv|parquet)$/i.test(n);
+  });
+}
+
+function isDhanJsonBatch(files) {
+  return files.length > 0 && files.every((f) => f.name.toLowerCase().endsWith(".json"));
+}
+
+async function uploadDhanJsonBatch(files, inputEl) {
+  const status = $("#download-status");
+  status.textContent = "";
+  const form = new FormData();
+  form.append("interval", $("#interval").value);
+  form.append("strikes_around_atm", $("#strikes").value);
+  const uploadDate = $("#upload-date")?.value;
+  if (uploadDate) form.append("date", uploadDate);
+  for (const file of files) {
+    form.append("files", file, file.webkitRelativePath || file.name);
+  }
+
+  setDownloadProgress({
+    pct: 10,
+    label: `Importing ${files.length} Dhan JSON file(s)…`,
+    detail: "Merging by trading day…",
+  });
+
+  try {
+    const res = await fetch(apiUrl("/api/upload-dhan-json"), { method: "POST", body: form });
+    const { ok, data } = await parseApiResponse(res);
+    if (!ok) throw new Error(data.detail || "JSON import failed");
+
+    for (const d of data.dates || []) selectedOptionsDates.add(d);
+    persistSelection();
+    await loadInventory();
+
+    const errNote = data.errors?.length ? ` · ${data.errors.length} file warning(s)` : "";
+    status.textContent = `${data.days} day(s) · ${data.rows} rows from ${data.files} JSON file(s)${errNote}`;
+    status.className = data.errors?.length ? "status-text" : "status-text ok";
+    setDownloadProgress({
+      pct: 100,
+      label: "Dhan JSON import complete",
+      detail: `${data.days} day(s): ${(data.dates || []).slice(0, 5).join(", ")}${(data.dates || []).length > 5 ? "…" : ""}`,
+    });
+  } catch (err) {
+    status.textContent = err.message;
+    status.className = "status-text err";
+    setDownloadProgress({ pct: 0, label: "JSON import failed", detail: err.message });
+  } finally {
+    if (inputEl) inputEl.value = "";
+  }
 }
 
 async function uploadFiles(kind, fileList, inputEl) {
   const status = $("#download-status");
-  const files = dataFilesFromInput(fileList);
+  const files = dataFilesFromInput(fileList, kind);
   if (!files.length) {
-    status.textContent = "No .csv or .parquet files selected";
+    status.textContent = kind === "options"
+      ? "No .json, .csv, or .parquet files selected"
+      : "No .csv or .parquet files selected";
     status.className = "status-text err";
     if (inputEl) inputEl.value = "";
     return;
+  }
+
+  if (kind === "options" && isDhanJsonBatch(files)) {
+    return uploadDhanJsonBatch(files, inputEl);
   }
 
   const fixedDay = $("#upload-date")?.value || (files.length === 1 ? $("#start-date").value : "");

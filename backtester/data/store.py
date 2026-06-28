@@ -348,6 +348,11 @@ def resolve_upload_day(day: str, content: bytes, filename: str) -> str:
     """Pick target trading day from form field, filename, or first timestamp in file."""
     if day and str(day).strip():
         return str(day).strip()[:10]
+    from . import dhan_json
+
+    inferred = dhan_json._infer_day_from_filename(filename)
+    if inferred:
+        return inferred
     inferred = cloud.infer_day_from_filename(filename)
     if inferred:
         return inferred
@@ -355,19 +360,39 @@ def resolve_upload_day(day: str, content: bytes, filename: str) -> str:
     if inferred:
         return inferred
     raise ValueError(
-        "Could not determine date — set Upload date or use a filename like 2026-06-25_spot.parquet"
+        "Could not determine date — set Upload date or use a filename like "
+        "today_2026-06-25_2026-07-01_ATM_CALL.json"
     )
 
 
 def ingest_upload(day: str, interval: str, strikes: int, kind: str, content: bytes, filename: str) -> dict:
-    """Parse uploaded CSV or parquet and save to the appropriate folder."""
+    """Parse uploaded CSV, parquet, or Dhan JSON and save to the appropriate folder."""
     name = (filename or "data.csv").lower()
+    if name.endswith(".json"):
+        if kind != "options":
+            raise ValueError("JSON uploads are for Dhan options only — use CSV/parquet for spot")
+        from . import dhan_json
+
+        target_day = resolve_upload_day(day, content, filename)
+        result = dhan_json.ingest_dhan_json_files(
+            [(filename, content)], interval, strikes, default_day=target_day
+        )
+        date = result["dates"][0] if result["dates"] else target_day
+        return {
+            "type": "options",
+            "date": date,
+            "interval": interval,
+            "strikes_around_atm": strikes,
+            "source": "dhan",
+            "rows": result["rows"],
+            "files": result["files"],
+        }
     if name.endswith(".parquet"):
         df = pd.read_parquet(BytesIO(content))
     elif name.endswith(".csv"):
         df = pd.read_csv(BytesIO(content))
     else:
-        raise ValueError("Upload .csv or .parquet only")
+        raise ValueError("Upload .json (Dhan options), .csv, or .parquet only")
 
     target_day = resolve_upload_day(day, content, filename)
 

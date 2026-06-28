@@ -220,3 +220,14 @@ def list_inventory() -> dict:
 
 def upload(kind: str, day: str, interval: str, strikes: int, content: bytes, filename: str) -> dict:
     return store.ingest_upload(day, interval, strikes, kind, content, filename)
+
+
+def upload_dhan_json(
+    file_items: list[tuple[str, bytes]],
+    interval: str,
+    strikes: int,
+    default_day: str = "",
+) -> dict:
+    from . import dhan_json
+
+    return dhan_json.ingest_dhan_json_files(file_items, interval, strikes, default_day=default_day)

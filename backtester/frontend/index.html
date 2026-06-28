@@ -50,14 +50,14 @@
         <div class="source-card source-dhan">
           <span class="source-badge">Dhan API</span>
           <strong>Options CE / PE</strong>
-          <span class="source-detail">ATM ±N strikes · premium, OI, volume</span>
+          <span class="source-detail">ATM ±N strikes · Dhan JSON, CSV, or parquet</span>
           <label class="upload-btn">
-            Upload options files
-            <input type="file" id="upload-options" accept=".csv,.parquet" multiple hidden />
+            Upload Dhan JSON / files
+            <input type="file" id="upload-options" accept=".json,.csv,.parquet" multiple hidden />
           </label>
           <label class="upload-btn upload-btn-secondary">
-            Upload options folder
-            <input type="file" id="upload-options-folder" accept=".csv,.parquet" webkitdirectory hidden />
+            Upload Dhan JSON folder
+            <input type="file" id="upload-options-folder" accept=".json" webkitdirectory hidden />
           </label>
         </div>
       </div>
@@ -99,7 +99,7 @@
               <option value="18">±18</option>
             </select>
           </label>
-          <span class="strikes-hint">Upload many files or a whole folder (date from path like 2026-05-11/) · interval &amp; strikes must match files</span>
+          <span class="strikes-hint">Dhan options: upload JSON folder (today_2026-06-25_…_ATM_CALL.json) · spot: CSV/parquet · interval &amp; strikes must match</span>
           <div id="download-progress" class="download-progress" hidden>
             <div class="download-progress-head">
               <span id="download-progress-label">Downloading…</span>

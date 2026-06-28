@@ -177,6 +177,29 @@ async def upload(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/upload-dhan-json")
+async def upload_dhan_json(
+    interval: str = Form("1min"),
+    strikes_around_atm: int = Form(10),
+    date: str = Form(""),
+    files: list[UploadFile] = File(...),
+):
+    try:
+        items: list[tuple[str, bytes]] = []
+        for f in files:
+            content = await f.read()
+            if content:
+                items.append((f.filename or "options.json", content))
+        if not items:
+            raise HTTPException(status_code=400, detail="No JSON files uploaded")
+        result = feed.upload_dhan_json(items, interval, strikes_around_atm, default_day=date)
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/run")
 def run(req: RunRequest):
     if not req.code.strip():

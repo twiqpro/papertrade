@@ -4,7 +4,11 @@
   "rewrites": [
     {
       "source": "/options-backtest",
-      "destination": "https://papertrade-absj.onrender.com/options-backtest"
+      "destination": "https://papertrade-absj.onrender.com/options-backtest/"
+    },
+    {
+      "source": "/options-backtest/",
+      "destination": "https://papertrade-absj.onrender.com/options-backtest/"
     },
     {
       "source": "/options-backtest/:path*",

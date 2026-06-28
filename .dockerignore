@@ -9,6 +9,5 @@
 !**/.env.example
 **/*.db
 **/*.sqlite
-frontend/
 node_modules/
 .vercel/

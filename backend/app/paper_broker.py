@@ -186,8 +186,8 @@ class PaperBroker:
         if lots < 1:
             return None
 
-        entry_slip = spread_aware_slippage(quote.bid, quote.ask, settings.fill_slippage_rupees)
-        entry_price = entry_ltp + entry_slip
+        # Enter at the current price (no slippage adjustment)
+        entry_price = entry_ltp
         target_price, base_stop_price = _premium_exit_levels(entry_price, settings)
         quantity = lots * LOT_SIZE
         contract = f"NIFTY {signal.strike} {signal.side}"

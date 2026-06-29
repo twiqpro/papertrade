@@ -61,7 +61,7 @@ class Strategy:
         ctx.params["chart_interval"] = "1min"  # use 1-min data in the data panel
 
         # --- order / session hygiene ---------------------------------------
-        ctx.params["order_ttl_bars"] = 6   # cancel resting limit after 6 x 1-min bars
+        ctx.params["order_ttl_bars"] = 5   # cancel resting limit after 5 x 1-min bars
         ctx.params["warmup_bars"] = 20     # 20 one-min bars after 9:15 open
         ctx.params["session_open"] = (9, 15)   # EMAs reset at NIFTY open
         ctx.params["entry_cutoff_hhmm"] = (15, 10)  # no new orders / fills after 3:10

@@ -26,7 +26,7 @@ class Strategy:
         ctx.params["chart_interval"] = "1min"
 
         # --- order / session hygiene ---------------------------------------
-        ctx.params["order_ttl_bars"] = 6
+        ctx.params["order_ttl_bars"] = 5
         ctx.params["warmup_bars"] = 20
         ctx.params["session_open"] = (9, 15)
         ctx.params["entry_cutoff_hhmm"] = (15, 10)

@@ -12,8 +12,8 @@ const formatNumber = new Intl.NumberFormat("en-IN", {
 
 const fallbackPayload = {
   settings: {
-    capital_budget: 50000,
-    daily_risk: 2500,
+    capital_budget: 100000,
+    daily_risk: 100000,
     target_rupees: 2,
     stop_loss_rupees: 10,
     ema_gap_min_points: 3,

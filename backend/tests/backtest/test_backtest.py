@@ -13,7 +13,7 @@ from app.backtest.sync import filter_atm_window, select_chain_snapshot
 from app.backtest.validators import validate_day
 from app.models import StrategySettings
 from app.oi_analysis import build_oi_wall_map, filter_chain_atm_window
-from app.signal_engine import CandleBar, calc_ema_series, calc_vwap_or_twap, evaluate_entry_signal
+from app.signal_engine import CandleBar, calc_ema_series, calc_vwap_or_twap, evaluate_entry_signal, reset_entry_bar_tracking
 from app.signal_engine import build_demo_context
 from app.strategy import DemoMarket, is_trade_window_open, nearest_nifty_strike
 from app.strategy_module.base import AccountState
@@ -98,6 +98,40 @@ def test_shared_engine_parity():
     account = AccountState(has_open_position=False, remaining_daily_budget=100000)
     decision = strategy.evaluate_entry(now, ctx, account, settings)
     assert signal.status == decision.status
+
+
+def test_entry_block_prevents_and_cancels_pending_limit():
+    reset_entry_bar_tracking()
+    settings = StrategySettings(vix_filter_enabled=False, spread_filter_enabled=False)
+    market = DemoMarket()
+    ctx = build_demo_context(market, 23500)
+    ctx.candles.append(CandleBar(23486, 23491, 23482, 23488, 1000))
+    now = datetime(2025, 6, 2, 10, 0, tzinfo=IST)
+
+    blocked = evaluate_entry_signal(
+        now,
+        settings,
+        ctx,
+        has_open_position=False,
+        entry_block_reason="Re-entry cooldown after exit",
+    )
+    assert blocked.status == "Skipped"
+    assert blocked.signal == "Entry blocked"
+
+    armed = evaluate_entry_signal(now, settings, ctx, has_open_position=False)
+    assert armed.status == "Skipped"
+    assert armed.signal == "EMA ATM limit armed"
+
+    cancelled = evaluate_entry_signal(
+        now,
+        settings,
+        ctx,
+        has_open_position=False,
+        entry_block_reason="Re-entry cooldown after exit",
+    )
+    assert cancelled.status == "Skipped"
+    assert cancelled.signal == "Limit cancelled"
+    assert "cancelled pending limit" in cancelled.reason
 
 
 def test_golden_day_replay(tmp_path):

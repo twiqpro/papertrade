@@ -128,12 +128,14 @@ class PaperTradingStore:
                 }
             known_trade_ids = {trade.id for trade in self.paper.trades}
             self.paper.manage_exits(now, self.settings, context)
+            can_enter, block_reason = self.paper.can_enter(now, self.settings)
             signal = evaluate_entry_signal(
                 now,
                 self.settings,
                 context,
                 remaining_daily_budget=self.paper.remaining_budget(self.settings),
                 has_open_position=self.paper.open_position is not None,
+                entry_block_reason=block_reason if not can_enter else None,
             )
             if signal.status == "Taken" and self.session_mode == "running":
                 entered = self.paper.try_enter(

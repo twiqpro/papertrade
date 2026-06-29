@@ -250,6 +250,7 @@ def evaluate_entry_signal(
     ctx: MarketContext,
     remaining_daily_budget: Optional[float] = None,
     has_open_position: bool = False,
+    entry_block_reason: Optional[str] = None,
 ) -> Signal:
     global _pending_limit_order, _pending_last_candle_count
 
@@ -268,6 +269,31 @@ def evaluate_entry_signal(
             ema_gap,
             "Skipped",
             f"Outside entry window {settings.trade_start}-{settings.trade_end}",
+            strike,
+            None,
+        )
+
+    if entry_block_reason:
+        if _pending_limit_order is not None:
+            pending = _pending_limit_order
+            _pending_limit_order = None
+            return _signal(
+                now,
+                "Limit cancelled",
+                pending.side,
+                ema_gap,
+                "Skipped",
+                f"Entry blocked: {entry_block_reason}; cancelled pending limit",
+                pending.strike,
+                pending.limit,
+            )
+        return _signal(
+            now,
+            "Entry blocked",
+            None,
+            ema_gap,
+            "Skipped",
+            f"Entry blocked: {entry_block_reason}",
             strike,
             None,
         )

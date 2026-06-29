@@ -119,7 +119,7 @@ class PaperBroker:
         if day.halted:
             return False, day.halt_reason or "Daily halt active"
         if settings.cooldown_enabled and day.cooldown_until and now < day.cooldown_until:
-            return False, "Re-entry cooldown after stop-out"
+            return False, "Re-entry cooldown after exit"
         if day.trades_today >= settings.max_trades_per_day:
             return False, f"Max trades per day ({settings.max_trades_per_day}) reached"
         return True, ""
@@ -251,9 +251,8 @@ class PaperBroker:
         self.open_position = None
         self._apply_trade_result(settings, pnl, result)
 
-        if result in ("Stop", "Trail"):
-            if self.day is not None and settings.cooldown_enabled:
-                self.day.cooldown_until = self._cooldown_until(now, settings)
+        if self.day is not None and settings.cooldown_enabled:
+            self.day.cooldown_until = self._cooldown_until(now, settings)
 
         return trade
 

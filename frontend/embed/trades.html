@@ -3,22 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Twiq Paper Trades</title>
-    <link rel="stylesheet" href="trades.css?v=5" />
+    <title>twiQ ATM Trades</title>
+    <link rel="stylesheet" href="trades.css?v=7" />
   </head>
   <body>
     <section class="paper-card" id="paperCard">
       <div class="paper-card__inner">
         <header class="card-top" id="cardTop">
-          <div class="card-top__banner">
-            <span class="card-top__pill">Live Trades</span>
+          <div class="card-top__row">
+            <h2 class="card-top__title">Live Trades</h2>
             <span class="card-top__date" id="topDate">—</span>
           </div>
-          <div class="card-top__stats">
-            <div class="card-top__stat">
-              <span class="card-top__label">Starting capital</span>
-              <span class="card-top__value" id="startingCapital">—</span>
-            </div>
+          <div class="card-top__stat">
+            <p class="card-top__label">Starting capital</p>
+            <p class="card-top__value" id="startingCapital">—</p>
           </div>
         </header>
 
@@ -36,14 +34,15 @@
 
         <footer class="card-sticky-footer">
           <p class="card-sticky-footer__text">
-            These trades taken based on the insights coming from the Twiq dashboard.
+            Session trades aligned to twiQ dashboard insights.
           </p>
         </footer>
       </div>
     </section>
 
+    <script src="config.embed.js"></script>
     <script src="../config.js"></script>
     <script src="../shared.js"></script>
-    <script src="trades.js?v=5"></script>
+    <script src="trades.js?v=7"></script>
   </body>
 </html>

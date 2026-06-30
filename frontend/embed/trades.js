@@ -75,10 +75,7 @@ const DEMO_TRADES = [
 
 function parseParams() {
   const params = new URLSearchParams(window.location.search);
-  const isLocal =
-    window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
-  const demo =
-    params.get("demo") === "1" || (isLocal && params.get("live") !== "1");
+  const demo = params.get("demo") === "1";
   return {
     limit: Math.max(1, Number(params.get("limit")) || 12),
     chromeless: params.get("chrome") === "0",
@@ -163,7 +160,7 @@ function renderTradesLog(trades) {
 
   if (!visible.length) {
     list.innerHTML =
-      '<li class="watchlist__empty">No paper trades yet — entries and exits appear here during the session.</li>';
+      '<li class="watchlist__empty">No trades yet — entries and exits appear here during the session.</li>';
     return;
   }
 
@@ -212,7 +209,7 @@ async function refreshTrades() {
     if (countEl) countEl.textContent = "ATM trades";
     if (list) {
       list.innerHTML =
-        '<li class="watchlist__empty">Cannot reach paper-trading backend. Start it with <code>run-local.sh</code>.</li>';
+        '<li class="watchlist__empty">Trade feed unavailable — reconnecting shortly.</li>';
     }
   }
 }

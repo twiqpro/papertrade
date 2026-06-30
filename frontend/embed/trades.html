@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Twiq Paper Trades</title>
+    <link rel="stylesheet" href="trades.css?v=5" />
+  </head>
+  <body>
+    <section class="paper-card" id="paperCard">
+      <div class="paper-card__inner">
+        <header class="card-top" id="cardTop">
+          <div class="card-top__banner">
+            <span class="card-top__pill">Live Trades</span>
+            <span class="card-top__date" id="topDate">—</span>
+          </div>
+          <div class="card-top__stats">
+            <div class="card-top__stat">
+              <span class="card-top__label">Starting capital</span>
+              <span class="card-top__value" id="startingCapital">—</span>
+            </div>
+          </div>
+        </header>
+
+        <div class="card-divider" aria-hidden="true"></div>
+
+        <div class="watchlist">
+          <div class="watchlist__head">
+            <span id="watchlistCount">ATM trades</span>
+            <span class="watchlist__head-right">P&amp;L</span>
+          </div>
+          <ul class="watchlist__list" id="tradesLogBody" aria-live="polite">
+            <li class="watchlist__empty">Loading…</li>
+          </ul>
+        </div>
+
+        <footer class="card-sticky-footer">
+          <p class="card-sticky-footer__text">
+            These trades taken based on the insights coming from the Twiq dashboard.
+          </p>
+        </footer>
+      </div>
+    </section>
+
+    <script src="../config.js"></script>
+    <script src="../shared.js"></script>
+    <script src="trades.js?v=5"></script>
+  </body>
+</html>

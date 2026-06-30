@@ -1,6 +1,17 @@
 {
   "outputDirectory": "frontend",
   "buildCommand": "bash scripts/vercel-build.sh",
+  "headers": [
+    {
+      "source": "/embed/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors https://*.vercel.app https://twiq.pro https://www.twiq.pro http://127.0.0.1:3000 http://localhost:3000"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/options-backtest",

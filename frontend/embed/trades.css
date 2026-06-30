@@ -1,0 +1,278 @@
+/* twiq product dark + insight card + watchlist */
+:root {
+  --card-bg: #000000;
+  --card-border: #1f1f1f;
+  --inner-bg: #000000;
+  --row-hover: rgba(255, 255, 255, 0.04);
+  --row-open: rgba(194, 0, 77, 0.08);
+  --accent: #c2004d;
+  --accent-soft: rgba(194, 0, 77, 0.15);
+  --text-primary: #ffffff;
+  --text-muted: #9ca3af;
+  --text-dim: #6b7280;
+  --text-footer: #4b5563;
+  --green: #86efac;
+  --red: #fca5a5;
+  --amber: #fcd34d;
+  --radius-card: 24px;
+  --radius-pill: 999px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+.paper-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  height: 100%;
+  padding: 0;
+  background: var(--card-bg);
+}
+
+.paper-card__inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100vh;
+  max-height: 100vh;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card);
+  background: var(--inner-bg);
+  overflow: hidden;
+}
+
+/* —— Top area: capital + date (above table) —— */
+.card-top {
+  flex-shrink: 0;
+  padding: 16px 16px 14px;
+}
+
+.card-top__banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.card-top__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+.card-top__date {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: right;
+  line-height: 1.3;
+}
+
+.card-top__stats {
+  display: block;
+}
+
+.card-top__label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.card-top__value {
+  display: block;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.card-divider {
+  flex-shrink: 0;
+  height: 1px;
+  margin: 0 16px;
+  background: #2a2a2a;
+}
+
+/* —— Watchlist —— */
+.watchlist {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.watchlist__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 12px 16px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.watchlist__head-right {
+  text-align: right;
+}
+
+.watchlist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.watchlist__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 10px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.watchlist__row:hover {
+  background: var(--row-hover);
+}
+
+.watchlist__row.is-open {
+  background: var(--row-open);
+}
+
+.watchlist__left {
+  min-width: 0;
+  flex: 1;
+}
+
+.watchlist__right {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.watchlist__name {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.watchlist__meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
+
+.watchlist__value {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.watchlist__value.pnl--pos {
+  color: var(--green);
+}
+
+.watchlist__value.pnl--neg {
+  color: var(--red);
+}
+
+.watchlist__status--open {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.watchlist__status--closed {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.watchlist__empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* —— Sticky bottom of card —— */
+.card-sticky-footer {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 12px 16px 14px;
+  border-top: 1px solid #2a2a2a;
+  background: linear-gradient(to top, #000 88%, rgba(0, 0, 0, 0.94));
+  backdrop-filter: blur(6px);
+}
+
+.card-sticky-footer__text {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #ffffff;
+  text-align: center;
+}
+
+/* chrome=0 — list only */
+body.chromeless {
+  background: transparent;
+}
+
+body.chromeless .paper-card,
+body.chromeless .paper-card__inner {
+  min-height: auto;
+  max-height: none;
+  border: none;
+  background: transparent;
+}
+
+body.chromeless .card-top,
+body.chromeless .card-divider,
+body.chromeless .card-sticky-footer {
+  display: none;
+}

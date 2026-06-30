@@ -25,6 +25,10 @@ from .oi_analysis import (
 from .strategy import LOT_SIZE, is_trade_window_open, nearest_nifty_strike, parse_hhmm
 
 
+# Hard ceiling for paper/live: max loss if stop-loss hits (rupees, not points).
+PER_TRADE_MAX_LOSS_RS = 20_000
+
+
 INDIA_VIX_SECURITY_ID = 26
 
 
@@ -143,15 +147,20 @@ def spread_aware_slippage(bid: float, ask: float, floor_rupees: float = 0.0) -> 
 def capital_lots(settings: StrategySettings, option_ltp: float) -> int:
     if option_ltp <= 0:
         return 0
-    if settings.use_full_capital:
-        return max(0, floor(settings.capital_budget / (option_ltp * LOT_SIZE)))
+    by_capital = floor(settings.capital_budget / (option_ltp * LOT_SIZE))
     stop_risk_per_lot = settings.stop_loss_rupees * LOT_SIZE
     if stop_risk_per_lot <= 0:
-        return 0
-    risk_cap = min(settings.per_trade_risk_cap, settings.daily_risk)
+        return max(0, by_capital)
+
+    # Never size so a full SL costs more than PER_TRADE_MAX_LOSS_RS (e.g. 20k).
+    by_loss_cap = floor(PER_TRADE_MAX_LOSS_RS / stop_risk_per_lot)
+
+    if settings.use_full_capital:
+        return max(0, min(by_capital, by_loss_cap))
+
+    risk_cap = min(settings.per_trade_risk_cap, PER_TRADE_MAX_LOSS_RS)
     by_risk = floor(risk_cap / stop_risk_per_lot)
-    by_capital = floor(settings.capital_budget / (option_ltp * LOT_SIZE))
-    return max(0, min(by_risk, by_capital))
+    return max(0, min(by_risk, by_capital, by_loss_cap))
 
 
 def risk_based_lots(settings: StrategySettings, remaining_daily_budget: float, option_ltp: float) -> int:

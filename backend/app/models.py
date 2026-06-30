@@ -18,7 +18,7 @@ VwapLabel = Literal["VWAP", "TWAP"]
 class StrategySettings(BaseModel):
     capital_budget: float = Field(100000, ge=0)
     daily_risk: float = Field(100000, ge=0)
-    per_trade_risk_cap: float = Field(100000, ge=0)
+    per_trade_risk_cap: float = Field(20_000, ge=0)
     use_full_capital: bool = True
     lots_per_trade: int = Field(1, ge=1)
     target_rupees: float = Field(5, gt=0)

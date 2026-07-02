@@ -24,7 +24,11 @@ def _demo_context(market: DemoMarket, strike: int) -> MarketContext:
 
 class PaperTradingStore:
     def __init__(self) -> None:
-        self.settings = StrategySettings(target_rupees=3, stop_loss_rupees=10)
+        self.settings = StrategySettings(
+            target_rupees=3,
+            stop_loss_rupees=10,
+            reentry_cooldown_candles=4,
+        )
         self.session_mode: SessionMode = "running"
         self.market = DemoMarket()
         self.context: MarketContext | None = None

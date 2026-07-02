@@ -205,7 +205,7 @@ class PaperBroker:
             entry_time=now,
             expiry=context.expiry,
             time_stop_at=self._time_stop_at(now, settings, context.expiry),
-            regime_at_entry="ema_atm_limit_forward",
+            regime_at_entry="ema_delta1_forward",
             base_stop_price=base_stop_price,
             peak_ltp=entry_price,
             trail_armed=False,

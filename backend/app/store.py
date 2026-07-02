@@ -11,7 +11,7 @@ from .oi_analysis import classify_regime, gamma_context, regime_display_label
 from .models import DashboardPayload, MarketState, SessionMode, StrategySettings, Summary
 from .paper_broker import PaperBroker
 from .repository import save_signal, save_trade
-from .signal_engine import LOT_SIZE, MarketContext, build_demo_context, capital_lots, evaluate_entry_signal
+from .signal_engine import LOT_SIZE, MarketContext, build_demo_context, capital_lots, evaluate_delta1_entry_signal
 from .strategy import DemoMarket, nearest_nifty_strike, is_trade_window_open
 
 
@@ -24,7 +24,7 @@ def _demo_context(market: DemoMarket, strike: int) -> MarketContext:
 
 class PaperTradingStore:
     def __init__(self) -> None:
-        self.settings = StrategySettings()
+        self.settings = StrategySettings(target_rupees=3, stop_loss_rupees=10)
         self.session_mode: SessionMode = "running"
         self.market = DemoMarket()
         self.context: MarketContext | None = None
@@ -129,7 +129,7 @@ class PaperTradingStore:
             known_trade_ids = {trade.id for trade in self.paper.trades}
             self.paper.manage_exits(now, self.settings, context)
             can_enter, block_reason = self.paper.can_enter(now, self.settings)
-            signal = evaluate_entry_signal(
+            signal = evaluate_delta1_entry_signal(
                 now,
                 self.settings,
                 context,

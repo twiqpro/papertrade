@@ -253,6 +253,213 @@ def _quote_for_strike(ctx: MarketContext, strike: int, side: OptionSide) -> Opti
     return quote_from_chain_row(payload)
 
 
+def select_delta1_strike(ctx: MarketContext, side: OptionSide) -> tuple[int, OptionQuote] | None:
+    """Pick the strike nearest delta ±1.0 for the given side, with deepest-ITM fallback."""
+    target_delta = 1.0 if side == "CE" else -1.0
+    best_strike: int | None = None
+    best_quote: OptionQuote | None = None
+    best_dist = float("inf")
+    best_abs_delta = -1.0
+
+    chain = ctx.chain_oc or {}
+    for key, row in chain.items():
+        strike = int(float(key))
+        payload = row.get("ce") if side == "CE" else row.get("pe")
+        if not payload:
+            continue
+        quote = quote_from_chain_row(payload)
+        delta = quote.delta
+        if delta == 0:
+            continue
+        if side == "CE" and delta <= 0:
+            continue
+        if side == "PE" and delta >= 0:
+            continue
+        dist = abs(delta - target_delta)
+        abs_delta = abs(delta)
+        if dist < best_dist or (dist == best_dist and abs_delta > best_abs_delta):
+            best_dist = dist
+            best_abs_delta = abs_delta
+            best_strike = strike
+            best_quote = quote
+
+    if best_strike is not None and best_quote is not None:
+        return best_strike, best_quote
+
+    spot = ctx.spot
+    if side == "CE":
+        itm_strikes = [int(float(key)) for key in chain if int(float(key)) < spot]
+        if not itm_strikes:
+            return None
+        fallback_strike = min(itm_strikes)
+    else:
+        itm_strikes = [int(float(key)) for key in chain if int(float(key)) > spot]
+        if not itm_strikes:
+            return None
+        fallback_strike = max(itm_strikes)
+
+    quote = _quote_for_strike(ctx, fallback_strike, side)
+    if quote.ltp <= 0:
+        return None
+    return fallback_strike, quote
+
+
+def build_demo_chain_oc(
+    spot: float,
+    atm_strike: int,
+    atm_ce_ltp: float,
+    atm_pe_ltp: float,
+    window: int = 10,
+) -> dict:
+    """Synthetic option chain with plausible deltas for offline forward testing."""
+    chain: dict = {}
+    step = 50
+    span = window * step
+    for offset in range(-window, window + 1):
+        strike = atm_strike + offset * step
+        key = f"{strike:.6f}"
+
+        if strike < spot:
+            ce_delta = min(0.99, 0.5 + (spot - strike) / span * 0.49)
+        else:
+            ce_delta = max(0.01, 0.5 - (strike - spot) / span * 0.49)
+        if strike > spot:
+            pe_delta = max(-0.99, -0.5 - (strike - spot) / span * 0.49)
+        else:
+            pe_delta = min(-0.01, -0.5 + (spot - strike) / span * 0.49)
+
+        ce_ltp = max(20.0, atm_ce_ltp + (atm_strike - strike) * 0.8)
+        pe_ltp = max(20.0, atm_pe_ltp + (strike - atm_strike) * 0.8)
+
+        chain[key] = {
+            "ce": {
+                "last_price": ce_ltp,
+                "top_bid_price": ce_ltp - 0.5,
+                "top_ask_price": ce_ltp + 0.5,
+                "oi": 10000,
+                "implied_volatility": 12.0,
+                "greeks": {"delta": ce_delta},
+            },
+            "pe": {
+                "last_price": pe_ltp,
+                "top_bid_price": pe_ltp - 0.5,
+                "top_ask_price": pe_ltp + 0.5,
+                "oi": 10000,
+                "implied_volatility": 12.0,
+                "greeks": {"delta": pe_delta},
+            },
+        }
+    return chain
+
+
+def evaluate_delta1_entry_signal(
+    now: datetime,
+    settings: StrategySettings,
+    ctx: MarketContext,
+    remaining_daily_budget: Optional[float] = None,
+    has_open_position: bool = False,
+    entry_block_reason: Optional[str] = None,
+) -> Signal:
+    """Forward-test entry: immediate delta-1 contract fill when EMA gap is valid."""
+    strike = ctx.atm_strike
+    ema_gap = abs(ctx.ema_9 - ctx.ema_20) if ctx.ema_20 else abs(ctx.ema_9 - ctx.ema_15)
+    gap = (ctx.ema_9 - ctx.ema_20) if ctx.ema_20 else (ctx.ema_9 - ctx.ema_15)
+
+    if has_open_position:
+        return _signal(now, "Position", None, ema_gap, "Skipped", "Open paper position — one at a time", strike, None)
+
+    if not is_trade_window_open(now, settings):
+        return _signal(
+            now,
+            "Window",
+            None,
+            ema_gap,
+            "Skipped",
+            f"Outside entry window {settings.trade_start}-{settings.trade_end}",
+            strike,
+            None,
+        )
+
+    if entry_block_reason:
+        return _signal(
+            now,
+            "Entry blocked",
+            None,
+            ema_gap,
+            "Skipped",
+            f"Entry blocked: {entry_block_reason}",
+            strike,
+            None,
+        )
+
+    candle_count = len(ctx.candles)
+    min_bars = settings.warmup_bars if ctx.history_seeded else 2
+    if candle_count < min_bars:
+        return _signal(
+            now,
+            "Data",
+            None,
+            ema_gap,
+            "Skipped",
+            f"Need {min_bars}+ bars for EMA warmup (have {candle_count})",
+            strike,
+            None,
+        )
+
+    if abs(gap) < settings.ema_gap_min_points:
+        return _signal(now, "EMA gap", None, ema_gap, "Skipped", f"EMA gap {gap:+.1f} < {settings.ema_gap_min_points}", strike, None)
+
+    side: OptionSide = "CE" if gap > 0 else "PE"
+    selected = select_delta1_strike(ctx, side)
+    if selected is None:
+        return _signal(
+            now,
+            "Contract",
+            side,
+            ema_gap,
+            "Skipped",
+            f"No delta-1 {side} contract available in chain window",
+            strike,
+            None,
+        )
+
+    strike, quote = selected
+    option_ltp = quote.ltp
+
+    spread = max(quote.ask - quote.bid, 0.0)
+    if settings.spread_filter_enabled and quote.bid > 0 and quote.ask > 0 and spread > settings.max_bid_ask_spread:
+        return _signal(now, "Liquidity", side, ema_gap, "Skipped", f"Bid-ask spread Rs {spread:.2f} too wide", strike, option_ltp)
+
+    if option_ltp <= 0:
+        return _signal(now, "Liquidity", side, ema_gap, "Skipped", f"Delta-1 {side} has no LTP at {strike}", strike, option_ltp)
+
+    if settings.vix_filter_enabled and ctx.india_vix is not None and ctx.india_vix >= settings.max_india_vix:
+        return _signal(now, "Liquidity", side, ema_gap, "Skipped", f"India VIX {ctx.india_vix:.1f} above cap", strike, option_ltp)
+
+    effective_capital = settings.capital_budget
+    if remaining_daily_budget is not None:
+        effective_capital = max(0.0, settings.capital_budget + remaining_daily_budget - settings.daily_risk)
+    sizing_settings = settings.model_copy(update={"capital_budget": effective_capital})
+    lots = capital_lots(sizing_settings, option_ltp) if settings.use_full_capital else settings.lots_per_trade
+    if lots < 1:
+        return _signal(now, "Sizing", side, ema_gap, "Skipped", "Cannot support 1 lot", strike, option_ltp)
+
+    delta_label = f"delta {quote.delta:+.2f}" if quote.delta else "ITM proxy"
+    return _signal(
+        now,
+        "EMA delta-1 entry",
+        side,
+        ema_gap,
+        "Taken",
+        (
+            f"Immediate {side} {strike} entry at {option_ltp:.1f} ({delta_label}); "
+            f"EMA gap {gap:+.1f}, approx {lots} lot(s)"
+        ),
+        strike,
+        option_ltp,
+    )
+
+
 def evaluate_entry_signal(
     now: datetime,
     settings: StrategySettings,
@@ -423,6 +630,12 @@ def build_demo_context(market: DemoMarket, strike: int, expiry: str | None = Non
     bar = CandleBar(market.nifty_spot - 2, market.nifty_spot + 3, market.nifty_spot - 4, market.nifty_spot + 1, 1000)
     walls = OiWallMap(call_wall=strike + 100, put_wall=strike - 100, pin_strike=float(strike), pcr=1.0, total_call_oi=0, total_put_oi=0)
     vwap_value, vwap_label = calc_vwap_or_twap([bar])
+    chain_oc = build_demo_chain_oc(
+        market.nifty_spot,
+        strike,
+        market.atm_ce_ltp,
+        market.atm_pe_ltp,
+    )
     return MarketContext(
         spot=market.nifty_spot,
         ema_9=market.ema_9,
@@ -440,7 +653,8 @@ def build_demo_context(market: DemoMarket, strike: int, expiry: str | None = Non
         walls=walls,
         gamma_flip=float(strike),
         expiry=expiry or datetime.now(IST).date().isoformat(),
-        chain_oc={},
+        chain_oc=chain_oc,
+        ema_20=market.ema_15 - 8.0,
     )
 
 
